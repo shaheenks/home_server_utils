@@ -10,11 +10,10 @@ import time
 import urllib.error
 import urllib.request
 
-ALLOWED_ORIGINS = [
-    "https://shaheenks.github.io",
-    "https://dev.shaheenks.co.in",
-    "http://localhost:8080",
-]
+def is_allowed_origin(origin):
+    if origin in ("https://shaheenks.github.io", "http://localhost:8080"):
+        return True
+    return bool(re.match(r"^https://(?:[\w-]+\.)?shaheenks\.co\.in$", origin))
 
 method = os.environ.get("REQUEST_METHOD", "GET")
 origin = os.environ.get("HTTP_ORIGIN", "")
@@ -22,7 +21,7 @@ origin = os.environ.get("HTTP_ORIGIN", "")
 if method == "OPTIONS":
     print("Status: 200 OK")
     print("Content-Type: text/plain")
-    if origin in ALLOWED_ORIGINS:
+    if is_allowed_origin(origin):
         print(f"Access-Control-Allow-Origin: {origin}")
         print("Access-Control-Allow-Methods: GET, OPTIONS")
         print("Access-Control-Allow-Headers: Content-Type")
@@ -39,6 +38,26 @@ def probe_tcp(service_id, name, host, port, timeout=2):
         return {"id": service_id, "name": name, "status": "ok", "latency_ms": latency, "detail": f"TCP {port} open"}
     except Exception as e:
         return {"id": service_id, "name": name, "status": "down", "latency_ms": None, "detail": str(e)[:120]}
+
+
+def probe_trex_health(url, timeout=3):
+    start = time.monotonic()
+    try:
+        try:
+            resp = urllib.request.urlopen(url, timeout=timeout)
+            body, code = resp.read(), resp.status
+        except urllib.error.HTTPError as e:
+            body, code = e.read(), e.code
+        latency = round((time.monotonic() - start) * 1000)
+        data = json.loads(body)
+        raw = data.get("checks", {})
+        checks = {k: ("ok" if v == "ok" else "down") for k, v in raw.items()}
+        status = "ok" if code < 400 else "degraded"
+        return {"id": "trex_api", "name": "Trex API", "status": status,
+                "latency_ms": latency, "detail": f"HTTP {code}", "checks": checks}
+    except Exception as e:
+        return {"id": "trex_api", "name": "Trex API", "status": "down",
+                "latency_ms": None, "detail": str(e)[:120], "checks": {}}
 
 
 def probe_http(service_id, name, url, timeout=3):
@@ -74,6 +93,22 @@ def probe_systemctl(service_id, name, unit):
         return {"id": service_id, "name": name, "status": "down", "latency_ms": None, "detail": str(e)[:120]}
 
 
+def get_uptime():
+    try:
+        with open("/proc/uptime") as f:
+            seconds = int(float(f.read().split()[0]))
+        days, rem = divmod(seconds, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes = rem // 60
+        if days:
+            return f"{days}d {hours}h {minutes}m"
+        if hours:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
+    except Exception:
+        return None
+
+
 def get_br0_addresses():
     try:
         out = subprocess.run(
@@ -90,8 +125,7 @@ def get_br0_addresses():
 # ── Define your services here ─────────────────────────────────────────────────
 SERVICES = [
     probe_tcp("ssh", "SSH (22)", "127.0.0.1", 22),
-    probe_http("trex_api", "Trex API", "http://127.0.0.1:8000/health"),
-    probe_systemctl("trex_worker", "Trex Celery Worker", "trex-celery.service"),
+    probe_trex_health("http://127.0.0.1:8000/health"),
     probe_systemctl("apache2", "Apache2", "apache2.service"),
     probe_tcp("mongodb", "MongoDB (Docker)", "127.0.0.1", 27017),
     probe_systemctl("docker", "Docker", "docker.service"),
@@ -104,13 +138,14 @@ result = {
     "overall": overall,
     "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     "server_hostname": socket.gethostname(),
+    "uptime": get_uptime(),
     "network": {"br0": get_br0_addresses()},
     "services": SERVICES,
 }
 
 print("Content-Type: application/json")
 print("Cache-Control: no-store")
-if origin in ALLOWED_ORIGINS:
+if is_allowed_origin(origin):
     print(f"Access-Control-Allow-Origin: {origin}")
 print()
 print(json.dumps(result))

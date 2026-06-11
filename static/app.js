@@ -4,6 +4,7 @@ let state = {
   serverStatus: "loading",
   lastChecked: null,
   serverHostname: "",
+  uptime: null,
   network: null,
   services: [],
   directChecks: [],
@@ -19,6 +20,7 @@ async function fetchServerStatus() {
     state.services = data.services || [];
     state.lastChecked = data.checked_at || null;
     state.serverHostname = data.server_hostname || "";
+    state.uptime = data.uptime || null;
     state.network = data.network || null;
     state.serverStatus = data.overall || "ok";
   } catch (e) {
@@ -79,15 +81,33 @@ function statusBadge(status) {
   </span>`;
 }
 
+function checksRow(checks) {
+  if (!checks || !Object.keys(checks).length) return "";
+  const pills = Object.entries(checks).map(([k, v]) => {
+    const label = k.charAt(0).toUpperCase() + k.slice(1);
+    const dot = v === "ok" ? "bg-green-400" : "bg-red-400";
+    const text = v === "ok" ? "text-green-700" : "text-red-600";
+    return `<span class="inline-flex items-center gap-1 text-xs ${text}">
+      <span class="w-1.5 h-1.5 rounded-full ${dot}"></span>${label}
+    </span>`;
+  }).join("");
+  return `<tr class="border-b border-gray-100 last:border-0 bg-gray-50/40">
+    <td colspan="4" class="px-4 pb-2.5 pt-0">
+      <div class="flex gap-3 flex-wrap pl-1">${pills}</div>
+    </td>
+  </tr>`;
+}
+
 function serviceRow(svc) {
   const latency = svc.latency_ms != null ? `${svc.latency_ms}ms` : "—";
   const detail = svc.detail ?? "";
-  return `<tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50/50 transition-colors">
+  const hasBorder = !svc.checks || !Object.keys(svc.checks).length;
+  return `<tr class="${hasBorder ? "border-b border-gray-100 last:border-0" : ""} hover:bg-gray-50/50 transition-colors">
     <td class="py-3 px-4 text-sm font-medium text-gray-800">${svc.name}</td>
     <td class="py-3 px-4">${statusBadge(svc.status)}</td>
     <td class="py-3 px-4 text-sm text-gray-400 font-mono tabular-nums w-20">${latency}</td>
     <td class="py-3 px-4 text-xs text-gray-400 max-w-xs truncate hidden sm:table-cell">${detail}</td>
-  </tr>`;
+  </tr>${checksRow(svc.checks)}`;
 }
 
 function networkCard(network) {
@@ -146,6 +166,9 @@ function render() {
   } else {
     lastCheckedEl.textContent = "";
   }
+
+  const uptimeEl = document.getElementById("uptime");
+  if (uptimeEl) uptimeEl.textContent = state.uptime ? `up ${state.uptime}` : "";
 
   document.getElementById("network-section").innerHTML = networkCard(state.network);
 

@@ -2,11 +2,12 @@
 import os
 import sys
 
-ALLOWED_ORIGINS = [
-    "https://shaheenks.github.io",
-    "https://dev.shaheenks.co.in",
-    "http://localhost:8080",
-]
+import re
+
+def is_allowed_origin(origin):
+    if origin in ("https://shaheenks.github.io", "http://localhost:8080"):
+        return True
+    return bool(re.match(r"^https://(?:[\w-]+\.)?shaheenks\.co\.in$", origin))
 
 method = os.environ.get("REQUEST_METHOD", "GET")
 origin = os.environ.get("HTTP_ORIGIN", "")
@@ -14,7 +15,7 @@ origin = os.environ.get("HTTP_ORIGIN", "")
 if method == "OPTIONS":
     print("Status: 200 OK")
     print("Content-Type: text/plain")
-    if origin in ALLOWED_ORIGINS:
+    if is_allowed_origin(origin):
         print(f"Access-Control-Allow-Origin: {origin}")
         print("Access-Control-Allow-Methods: GET, OPTIONS")
         print("Access-Control-Allow-Headers: Content-Type")
@@ -23,7 +24,7 @@ if method == "OPTIONS":
 
 print("Content-Type: application/json")
 print("Cache-Control: no-store")
-if origin in ALLOWED_ORIGINS:
+if is_allowed_origin(origin):
     print(f"Access-Control-Allow-Origin: {origin}")
 print()
 print('{"ok": true}')
