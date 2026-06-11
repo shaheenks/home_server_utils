@@ -9,7 +9,7 @@ home_server_utils/
 ├── cgi/                    ← deploy to Apache's cgi-bin
 │   ├── status.cgi          ← probes services/ports, returns JSON
 │   └── ping.cgi            ← reachability check endpoint
-└── landing_page/           ← static GitHub Pages site
+└── static/           ← static GitHub Pages site
     ├── index.html
     ├── config.js           ← user-editable config (URLs, branding)
     └── app.js              ← fetch logic and DOM rendering
@@ -26,15 +26,15 @@ A static dashboard that shows home server health. Fetches `status.cgi` on page l
 ### Local development
 
 ```bash
-make serve                  # serves landing_page/ at http://localhost:8080
+make serve                  # serves static/ at http://localhost:8080
 make serve SERVE_PORT=9000  # custom port
 ```
 
-Point `STATUS_SERVER_URL` in `landing_page/config.js` at `http://localhost/cgi-bin/status.cgi` while developing locally.
+Point `STATUS_SERVER_URL` in `static/config.js` at `http://localhost/cgi-bin/status.cgi` while developing locally.
 
 ### GitHub Pages deployment
 
-1. Enable Pages in the repo settings, set source to the `landing_page/` directory.
+1. Enable Pages in the repo settings, set source to the root `/` of the branch (`index.html` is at root).
 2. Update `ALLOWED_ORIGINS` in both `.cgi` files to include the GitHub Pages URL.
 
 ## CGI Scripts

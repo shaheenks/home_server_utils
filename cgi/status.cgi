@@ -93,8 +93,9 @@ SERVICES = [
     probe_http("trex_api", "Trex API", "http://127.0.0.1:8000/health"),
     probe_systemctl("trex_worker", "Trex Celery Worker", "trex-celery.service"),
     probe_systemctl("apache2", "Apache2", "apache2.service"),
-    probe_systemctl("mongodb", "MongoDB", "mongod.service"),
-    probe_systemctl("redis", "Redis", "redis-server.service"),
+    probe_tcp("mongodb", "MongoDB (Docker)", "127.0.0.1", 27017),
+    probe_systemctl("docker", "Docker", "docker.service"),
+    probe_tcp("redis", "Redis (Docker)", "127.0.0.1", 6379),
 ]
 
 overall = "ok" if all(s["status"] == "ok" for s in SERVICES) else "degraded"

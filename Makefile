@@ -1,7 +1,7 @@
 CGI_SRC    := cgi
 CGI_DEST   := /usr/lib/cgi-bin
 SCRIPTS    := status.cgi ping.cgi
-SERVE_DIR  := landing_page
+SERVE_DIR  := .
 SERVE_PORT := 8080
 
 .DEFAULT_GOAL := help
@@ -12,7 +12,7 @@ help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "  deploy              Copy CGI scripts to $(CGI_DEST), set permissions, reload Apache"
-	@echo "  serve               Serve landing_page/ locally at http://localhost:$(SERVE_PORT)"
+	@echo "  serve               Serve static/ locally at http://localhost:$(SERVE_PORT)"
 	@echo "                        Override port: make serve SERVE_PORT=9000"
 	@echo ""
 
