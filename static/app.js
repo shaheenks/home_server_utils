@@ -158,8 +158,6 @@ function serviceTable(rows, caption, subtitle) {
 }
 
 function render() {
-  document.getElementById("overall-status").innerHTML = statusBadge(state.serverStatus);
-
   const lastCheckedEl = document.getElementById("last-checked");
   if (state.lastChecked) {
     lastCheckedEl.textContent = `Last checked ${new Date(state.lastChecked).toLocaleTimeString()}`;
@@ -193,21 +191,52 @@ function render() {
 
 // ── Auto-refresh ──────────────────────────────────────────────────────────────
 
+let _autoRefreshEnabled = true;
+let _refreshIntervalId = null;
 let _nextRefreshIn = 0;
+let _intervalMs = 30000;
+
+function _setCountdownText() {
+  const el = document.getElementById("next-refresh");
+  if (!el) return;
+  el.textContent = _autoRefreshEnabled ? `Refreshes in ${_nextRefreshIn}s` : "Auto-refresh paused";
+}
+
+function toggleAutoRefresh() {
+  _autoRefreshEnabled = !_autoRefreshEnabled;
+
+  const track = document.getElementById("refresh-toggle");
+  const thumb = document.getElementById("toggle-thumb");
+
+  if (_autoRefreshEnabled) {
+    track.classList.replace("bg-gray-300", "bg-green-400");
+    thumb.classList.replace("translate-x-0", "translate-x-4");
+    track.setAttribute("aria-checked", "true");
+    _nextRefreshIn = _intervalMs / 1000;
+    _refreshIntervalId = setInterval(refresh, _intervalMs);
+  } else {
+    track.classList.replace("bg-green-400", "bg-gray-300");
+    thumb.classList.replace("translate-x-4", "translate-x-0");
+    track.setAttribute("aria-checked", "false");
+    clearInterval(_refreshIntervalId);
+    _refreshIntervalId = null;
+  }
+
+  _setCountdownText();
+}
 
 function startAutoRefresh() {
-  const intervalMs = (window.CONFIG.REFRESH_INTERVAL_S || 30) * 1000;
-  if (intervalMs <= 0) return;
+  _intervalMs = (window.CONFIG.REFRESH_INTERVAL_S || 30) * 1000;
+  if (_intervalMs <= 0) return;
 
-  _nextRefreshIn = intervalMs / 1000;
-
-  setInterval(refresh, intervalMs);
+  _nextRefreshIn = _intervalMs / 1000;
+  _refreshIntervalId = setInterval(refresh, _intervalMs);
 
   setInterval(() => {
+    if (!_autoRefreshEnabled) return;
     _nextRefreshIn = Math.max(0, _nextRefreshIn - 1);
-    if (_nextRefreshIn === 0) _nextRefreshIn = intervalMs / 1000;
-    const el = document.getElementById("next-refresh");
-    if (el) el.textContent = `Refreshes in ${_nextRefreshIn}s`;
+    if (_nextRefreshIn === 0) _nextRefreshIn = _intervalMs / 1000;
+    _setCountdownText();
   }, 1000);
 }
 
@@ -219,7 +248,7 @@ document.addEventListener("visibilitychange", () => {
 
 document.addEventListener("DOMContentLoaded", () => {
   const cfg = window.CONFIG;
-  document.title = cfg.SITE_TITLE || "Home Server Status";
+  document.title = cfg.SITE_TITLE || "Server Status";
   document.getElementById("site-title").textContent = cfg.SITE_TITLE || "Home Server Status";
   document.getElementById("server-name").textContent = cfg.SERVER_NAME || "";
   document.getElementById("footer-host").textContent = cfg.SERVER_NAME || "";

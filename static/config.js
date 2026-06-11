@@ -17,6 +17,6 @@ window.CONFIG = {
   ],
 
   // Branding
-  SITE_TITLE: "Home Server Status",
+  SITE_TITLE: "Server Status",
   SERVER_NAME: "dev.shaheenks.co.in",
 };

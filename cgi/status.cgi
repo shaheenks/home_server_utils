@@ -109,6 +109,20 @@ def get_uptime():
         return None
 
 
+def probe_kvm(service_id, name, vm_name):
+    try:
+        out = subprocess.run(
+            ["virsh", "dominfo", vm_name],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+        match = re.search(r"^State:\s+(.+)$", out, re.MULTILINE)
+        state = match.group(1).strip() if match else "unknown"
+        status = "ok" if state == "running" else ("degraded" if state == "paused" else "down")
+        return {"id": service_id, "name": name, "status": status, "latency_ms": None, "detail": state}
+    except Exception as e:
+        return {"id": service_id, "name": name, "status": "down", "latency_ms": None, "detail": str(e)[:120]}
+
+
 def get_br0_addresses():
     try:
         out = subprocess.run(
@@ -127,9 +141,10 @@ SERVICES = [
     probe_tcp("ssh", "SSH (22)", "127.0.0.1", 22),
     probe_trex_health("http://127.0.0.1:8000/health"),
     probe_systemctl("apache2", "Apache2", "apache2.service"),
-    probe_tcp("mongodb", "MongoDB (Docker)", "127.0.0.1", 27017),
+    probe_tcp("mongodb", "MongoDB Service", "127.0.0.1", 27017),
     probe_systemctl("docker", "Docker", "docker.service"),
-    probe_tcp("redis", "Redis (Docker)", "127.0.0.1", 6379),
+    probe_tcp("redis", "Redis Service", "127.0.0.1", 6379),
+    probe_kvm("win10", "Windows 10 VM", "win10"),
 ]
 
 overall = "ok" if all(s["status"] == "ok" for s in SERVICES) else "degraded"
