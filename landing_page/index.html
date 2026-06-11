@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Home Server Status</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="config.js"></script>
+</head>
+<body class="min-h-full bg-gray-50 font-sans text-gray-900 antialiased">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+      <div class="min-w-0">
+        <h1 id="site-title" class="text-sm font-semibold text-gray-900 truncate"></h1>
+        <p id="server-name" class="text-xs text-gray-400 font-mono mt-0.5 truncate"></p>
+      </div>
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <div id="overall-status"></div>
+        <button
+          onclick="refresh()"
+          class="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 active:bg-gray-100 transition select-none">
+          Refresh
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main class="max-w-3xl mx-auto px-4 py-6 space-y-4">
+
+    <!-- Meta row -->
+    <div class="flex items-center justify-between text-xs text-gray-400 px-0.5">
+      <span id="last-checked"></span>
+      <span id="next-refresh"></span>
+    </div>
+
+    <!-- Network adapter info (br0 IPs) -->
+    <div id="network-section"></div>
+
+    <!-- Service health from CGI -->
+    <div id="server-section">
+      <div class="rounded-xl border border-gray-200 bg-white shadow-sm p-10 text-center text-sm text-gray-400 animate-pulse">
+        Checking services…
+      </div>
+    </div>
+
+    <!-- Direct browser connectivity checks -->
+    <div id="direct-section"></div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="text-center text-xs text-gray-300 py-10 space-y-0.5">
+    <p>Checks run from your browser &amp; via CGI at <span id="footer-host" class="font-mono"></span></p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
