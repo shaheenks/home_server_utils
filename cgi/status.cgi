@@ -136,18 +136,31 @@ def get_br0_addresses():
         return {"ipv4": [], "ipv6": [], "error": str(e)[:80]}
 
 
-# ── Define your services here ─────────────────────────────────────────────────
-SERVICES = [
-    probe_tcp("ssh", "SSH (22)", "127.0.0.1", 22),
-    probe_trex_health("http://127.0.0.1:8000/health"),
-    probe_systemctl("apache2", "Apache2", "apache2.service"),
-    probe_tcp("mongodb", "MongoDB Service", "127.0.0.1", 27017),
-    probe_systemctl("docker", "Docker", "docker.service"),
-    probe_tcp("redis", "Redis Service", "127.0.0.1", 6379),
-    probe_kvm("win10", "Windows 10 VM", "win10"),
+# ── Define service groups here ────────────────────────────────────────────────
+GROUPS = [
+    {
+        "id": "system",
+        "label": "Service Health",
+        "services": [
+            probe_tcp("ssh", "SSH (22)", "127.0.0.1", 22),
+            probe_systemctl("apache2", "Apache2", "apache2.service"),
+            probe_systemctl("docker", "Docker", "docker.service"),
+            probe_kvm("win10", "Windows 10 VM", "win10"),
+        ],
+    },
+    {
+        "id": "trex",
+        "label": "Trex",
+        "services": [
+            probe_trex_health("http://127.0.0.1:8000/health"),
+            probe_tcp("mongodb", "MongoDB Service", "127.0.0.1", 27017),
+            probe_tcp("redis", "Redis Service", "127.0.0.1", 6379),
+        ],
+    },
 ]
 
-overall = "ok" if all(s["status"] == "ok" for s in SERVICES) else "degraded"
+all_services = [s for g in GROUPS for s in g["services"]]
+overall = "ok" if all(s["status"] == "ok" for s in all_services) else "degraded"
 
 result = {
     "overall": overall,
@@ -155,7 +168,7 @@ result = {
     "server_hostname": socket.gethostname(),
     "uptime": get_uptime(),
     "network": {"br0": get_br0_addresses()},
-    "services": SERVICES,
+    "groups": GROUPS,
 }
 
 print("Content-Type: application/json")

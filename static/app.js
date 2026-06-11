@@ -6,7 +6,7 @@ let state = {
   serverHostname: "",
   uptime: null,
   network: null,
-  services: [],
+  groups: [],
   directChecks: [],
 };
 
@@ -22,6 +22,7 @@ async function fetchServerStatus() {
     state.serverHostname = data.server_hostname || "";
     state.uptime = data.uptime || null;
     state.network = data.network || null;
+    state.groups = data.groups || [];
     state.serverStatus = data.overall || "ok";
   } catch (e) {
     state.serverStatus = "unreachable";
@@ -180,7 +181,9 @@ function render() {
     </div>`;
   } else {
     const hostname = state.serverHostname ? `via ${state.serverHostname}` : "via CGI";
-    serverSection.innerHTML = serviceTable(state.services, "Service Health", hostname);
+    serverSection.innerHTML = state.groups
+      .map((g, i) => serviceTable(g.services, g.label, i === 0 ? hostname : ""))
+      .join("");
   }
 
   const directSection = document.getElementById("direct-section");
@@ -191,7 +194,7 @@ function render() {
 
 // ── Auto-refresh ──────────────────────────────────────────────────────────────
 
-let _autoRefreshEnabled = true;
+let _autoRefreshEnabled = false;
 let _refreshIntervalId = null;
 let _nextRefreshIn = 0;
 let _intervalMs = 30000;
@@ -230,7 +233,7 @@ function startAutoRefresh() {
   if (_intervalMs <= 0) return;
 
   _nextRefreshIn = _intervalMs / 1000;
-  _refreshIntervalId = setInterval(refresh, _intervalMs);
+  // interval not started — toggle is off by default
 
   setInterval(() => {
     if (!_autoRefreshEnabled) return;
