@@ -150,7 +150,7 @@ GROUPS = [
     },
     {
         "id": "trex",
-        "label": "Trex",
+        "label": "TREX",
         "services": [
             probe_trex_health("http://127.0.0.1:8000/health"),
             probe_tcp("mongodb", "MongoDB Service", "127.0.0.1", 27017),

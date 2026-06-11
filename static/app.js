@@ -181,9 +181,9 @@ function render() {
     </div>`;
   } else {
     const hostname = state.serverHostname ? `via ${state.serverHostname}` : "via CGI";
-    serverSection.innerHTML = state.groups
+    serverSection.innerHTML = `<div class="space-y-4">${state.groups
       .map((g, i) => serviceTable(g.services, g.label, i === 0 ? hostname : ""))
-      .join("");
+      .join("")}</div>`;
   }
 
   const directSection = document.getElementById("direct-section");
