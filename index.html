@@ -11,7 +11,7 @@
 
   <!-- Header -->
   <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
-    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
       <div class="min-w-0">
         <h1 id="site-title" class="text-sm font-semibold text-gray-900 truncate"></h1>
         <p class="text-xs text-gray-400 font-mono mt-0.5 truncate">
@@ -37,26 +37,31 @@
   </header>
 
   <!-- Main content -->
-  <main class="max-w-3xl mx-auto px-4 py-6 space-y-4">
+  <main class="max-w-5xl mx-auto px-4 py-6">
 
     <!-- Meta row -->
-    <div class="flex items-center justify-between text-xs text-gray-400 px-0.5">
+    <div class="flex items-center justify-between text-xs text-gray-400 px-0.5 mb-4">
       <span id="last-checked"></span>
       <span id="next-refresh"></span>
     </div>
 
-    <!-- Network adapter info (br0 IPs) -->
-    <div id="network-section"></div>
+    <!-- 2-column grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
 
-    <!-- Service health from CGI -->
-    <div id="server-section">
-      <div class="rounded-xl border border-gray-200 bg-white shadow-sm p-10 text-center text-sm text-gray-400 animate-pulse">
-        Checking services…
+      <!-- Left column: Network + Browser Connectivity -->
+      <div class="space-y-4">
+        <div id="network-section"></div>
+        <div id="direct-section"></div>
       </div>
-    </div>
 
-    <!-- Direct browser connectivity checks -->
-    <div id="direct-section"></div>
+      <!-- Right column: Service Health + TREX -->
+      <div id="server-section">
+        <div class="rounded-xl border border-gray-200 bg-white shadow-sm p-10 text-center text-sm text-gray-400 animate-pulse">
+          Checking services…
+        </div>
+      </div>
+
+    </div>
 
   </main>
 

@@ -8,6 +8,7 @@ let state = {
   network: null,
   groups: [],
   directChecks: [],
+  directChecksLoading: true,
 };
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
@@ -55,7 +56,9 @@ async function runDirectCheck(check) {
 
 async function runAllDirectChecks() {
   const checks = window.CONFIG.DIRECT_CHECKS || [];
+  state.directChecksLoading = true;
   state.directChecks = await Promise.all(checks.map(runDirectCheck));
+  state.directChecksLoading = false;
 }
 
 async function refresh() {
@@ -116,20 +119,20 @@ function networkCard(network) {
       br0: ${error}
     </div>`;
   }
-  const ipRow = (label, addrs) => addrs.length
-    ? `<div>
-        <p class="text-xs text-gray-400 mb-1">${label}</p>
-        ${addrs.map(a => `<p class="text-sm font-mono text-gray-700 break-all">${a}</p>`).join("")}
-      </div>`
-    : "";
+  const rows = [
+    ...ipv4.map(a => ({ label: "IPv4", addr: a })),
+    ...ipv6.map(a => ({ label: "IPv6", addr: a })),
+  ];
   return `<div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
     <div class="px-5 py-3.5 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between">
       <h2 class="text-sm font-semibold text-gray-700">Network — br0</h2>
       <span class="text-xs text-gray-400">bridge adapter</span>
     </div>
-    <div class="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-      ${ipRow("IPv4", ipv4)}
-      ${ipRow("IPv6", ipv6)}
+    <div class="px-5 py-3 space-y-2">
+      ${rows.map(r => `<div class="flex items-center gap-3">
+        <span class="text-xs text-gray-400 w-8 flex-shrink-0">${r.label}</span>
+        <span class="text-sm font-mono text-gray-700 break-all">${r.addr}</span>
+      </div>`).join("")}
     </div>
   </div>`;
 }
@@ -184,9 +187,12 @@ function render() {
   }
 
   const directSection = document.getElementById("direct-section");
-  directSection.innerHTML = state.directChecks.length
-    ? serviceTable(state.directChecks, "Browser Connectivity", "from your browser")
-    : "";
+  if (state.directChecksLoading && !state.directChecks.length) {
+    directSection.innerHTML = `<div class="rounded-xl border border-gray-200 bg-white shadow-sm p-6 text-center text-sm text-gray-400 animate-pulse">Checking connectivity…</div>`;
+  } else if (state.directChecks.length) {
+    const subtitle = state.directChecksLoading ? "refreshing…" : "from your browser";
+    directSection.innerHTML = serviceTable(state.directChecks, "Browser Connectivity", subtitle);
+  }
 }
 
 // ── Auto-refresh ──────────────────────────────────────────────────────────────
