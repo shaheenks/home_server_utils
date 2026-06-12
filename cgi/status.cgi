@@ -112,7 +112,7 @@ def get_uptime():
 def probe_kvm(service_id, name, vm_name):
     try:
         out = subprocess.run(
-            ["virsh", "dominfo", vm_name],
+            ["virsh", "--connect", "qemu:///system", "dominfo", vm_name],
             capture_output=True, text=True, timeout=5,
         ).stdout
         match = re.search(r"^State:\s+(.+)$", out, re.MULTILINE)

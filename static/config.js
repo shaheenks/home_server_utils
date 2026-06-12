@@ -14,6 +14,12 @@ window.CONFIG = {
       url: "https://dev.shaheenks.co.in/cgi-bin/ping.cgi",
       expect_status: 200,
     },
+    {
+      id: "trex_access",
+      name: "Trex Server Access",
+      url: "https://trex.shaheenks.co.in/health/ping",
+      expect_status: 200,
+    },
   ],
 
   // Branding
