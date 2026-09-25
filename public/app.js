@@ -184,15 +184,11 @@ function serverColumn(server) {
     ${data?.power_enabled ? powerButtons(server) : ""}
   </div>`;
 
-  let body;
+  // Unreachable servers show only the header (badge + host), no body.
+  let body = "";
   if (status === "loading") {
     body = `<div class="${CARD} p-10 text-center text-sm text-gray-400 animate-pulse">Checking services…</div>`;
-  } else if (status === "unreachable") {
-    body = `<div class="rounded-xl border border-red-200 bg-red-50 p-8 text-center space-y-1">
-      <p class="font-semibold text-red-700">Status agent unreachable</p>
-      <p class="text-sm text-red-500">The server may be offline, or the agent is not running.</p>
-    </div>`;
-  } else {
+  } else if (data) {
     body = [networkCard(data.network), ...data.groups.map(g => serviceTable(g.services, g.label))].join("");
   }
 
