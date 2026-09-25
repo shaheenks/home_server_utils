@@ -1,0 +1,12 @@
+# Keep everything except the dashboard (index.html, static/) off the public site
+.git
+.gitignore
+.assetsignore
+.wrangler
+node_modules
+agent
+config
+deploy
+Makefile
+README.md
+wrangler.jsonc

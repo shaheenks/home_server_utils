@@ -1,0 +1,6 @@
+{
+  // Static dashboard served by Cloudflare Workers (assets only, no Worker script).
+  "name": "server-status",
+  "compatibility_date": "2026-09-01",
+  "assets": { "directory": "." }
+}

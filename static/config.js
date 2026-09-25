@@ -1,28 +1,18 @@
 // config.js — edit this file to configure your dashboard
 window.CONFIG = {
-  // URL of the status CGI on your home server
-  STATUS_SERVER_URL: "https://dev.shaheenks.co.in/cgi-bin/status.cgi",
+  // One entry per server running the status agent (agent_url = its /agent/ reverse proxy)
+  SERVERS: [
+    { id: "ubuntu", name: "Linux Server", agent_url: "https://dev.shaheenks.co.in/agent" },
+    { id: "pi", name: "Raspberry Pi", agent_url: "https://rpi.shaheenks.co.in/agent" },
+  ],
 
   // Auto-refresh interval in seconds (0 to disable)
   REFRESH_INTERVAL_S: 30,
 
-  // Direct browser checks — the browser fetches these itself (proves external reachability)
-  DIRECT_CHECKS: [
-    {
-      id: "ddns_ping",
-      name: "Server Reachability",
-      url: "https://dev.shaheenks.co.in/cgi-bin/ping.cgi",
-      expect_status: 200,
-    },
-    {
-      id: "trex_access",
-      name: "Trex Server Access",
-      url: "https://trex.shaheenks.co.in/health/ping",
-      expect_status: 200,
-    },
-  ],
+  // Extra direct browser checks. Each server's /ping is checked automatically.
+  // e.g. { id: "trex_access", name: "Trex Server Access", url: "https://trex.shaheenks.co.in/health/ping", expect_status: 200 }
+  DIRECT_CHECKS: [],
 
   // Branding
   SITE_TITLE: "Server Status",
-  SERVER_NAME: "dev.shaheenks.co.in",
 };

@@ -1,35 +1,27 @@
 // app.js
 
-let state = {
-  serverStatus: "loading",
+const state = {
+  servers: {},            // id → { status, data }
   lastChecked: null,
-  serverHostname: "",
-  uptime: null,
-  network: null,
-  groups: [],
   directChecks: [],
   directChecksLoading: true,
 };
 
+const servers = () => window.CONFIG.SERVERS || [];
+
 // ── Data fetching ─────────────────────────────────────────────────────────────
 
-async function fetchServerStatus() {
+async function fetchServerStatus(server) {
+  const entry = state.servers[server.id];
   try {
-    const resp = await fetch(window.CONFIG.STATUS_SERVER_URL, { cache: "no-store" });
+    const resp = await fetch(`${server.agent_url}/status`, { cache: "no-store" });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    state.services = data.services || [];
-    state.lastChecked = data.checked_at || null;
-    state.serverHostname = data.server_hostname || "";
-    state.uptime = data.uptime || null;
-    state.network = data.network || null;
-    state.groups = data.groups || [];
-    state.serverStatus = data.overall || "ok";
+    entry.data = await resp.json();
+    entry.status = entry.data.overall || "ok";
   } catch (e) {
-    state.serverStatus = "unreachable";
-    state.services = [];
-    state.lastChecked = null;
-    console.warn("Status CGI unreachable:", e.message);
+    entry.status = "unreachable";
+    entry.data = null;
+    console.warn(`${server.name} agent unreachable:`, e.message);
   }
 }
 
@@ -45,27 +37,60 @@ async function runDirectCheck(check) {
       detail: `HTTP ${resp.status}`,
     };
   } catch (e) {
-    return {
-      ...check,
-      status: "down",
-      latency_ms: null,
-      detail: e.message,
-    };
+    return { ...check, status: "down", latency_ms: null, detail: e.message };
   }
 }
 
 async function runAllDirectChecks() {
-  const checks = window.CONFIG.DIRECT_CHECKS || [];
+  const checks = [
+    ...servers().map(s => ({
+      id: `${s.id}_ping`,
+      name: `${s.name} Reachability`,
+      url: `${s.agent_url}/ping`,
+      expect_status: 200,
+    })),
+    ...(window.CONFIG.DIRECT_CHECKS || []),
+  ];
   state.directChecksLoading = true;
   state.directChecks = await Promise.all(checks.map(runDirectCheck));
   state.directChecksLoading = false;
 }
 
 async function refresh() {
-  state.serverStatus = "loading";
+  for (const s of servers()) {
+    state.servers[s.id] ??= { status: "loading", data: null };
+  }
   render();
-  await Promise.all([fetchServerStatus(), runAllDirectChecks()]);
+  await Promise.all([...servers().map(fetchServerStatus), runAllDirectChecks()]);
+  state.lastChecked = new Date();
   render();
+}
+
+// ── Power actions ─────────────────────────────────────────────────────────────
+
+async function powerAction(serverId, action) {
+  const server = servers().find(s => s.id === serverId);
+  const verb = action === "reboot" ? "Reboot" : "Shut down";
+  const warning = action === "shutdown"
+    ? "\n\nIt will stay off until it is powered on physically."
+    : "";
+  if (!confirm(`${verb} ${server.name}?${warning}`)) return;
+
+  const token = prompt(`Power token for ${server.name}:`);
+  if (!token) return;
+
+  try {
+    const resp = await fetch(`${server.agent_url}/power`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token.trim()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+    alert(`${server.name}: ${action} in ${data.in_seconds}s`);
+  } catch (e) {
+    alert(`${verb} failed: ${e.message}`);
+  }
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -78,11 +103,23 @@ const STATUS_CFG = {
   loading:     { dot: "bg-gray-300 animate-pulse", pill: "bg-gray-50 text-gray-400 border-gray-200", label: "Checking…" },
 };
 
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+const CARD = "rounded-xl border border-gray-200 bg-white shadow-sm";
+
 function statusBadge(status) {
   const cfg = STATUS_CFG[status] ?? STATUS_CFG.loading;
   return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${cfg.pill}">
     <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}"></span>${cfg.label}
   </span>`;
+}
+
+function cardHeader(title, right) {
+  return `<div class="px-5 py-3.5 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between gap-3">
+    <h2 class="text-sm font-semibold text-gray-700">${esc(title)}</h2>
+    ${right ?? ""}
+  </div>`;
 }
 
 function checksPills(checks) {
@@ -92,7 +129,7 @@ function checksPills(checks) {
     const dot = v === "ok" ? "bg-green-400" : "bg-red-400";
     const text = v === "ok" ? "text-green-700" : "text-red-600";
     return `<span class="inline-flex items-center gap-1 text-xs ${text}">
-      <span class="w-1.5 h-1.5 rounded-full ${dot}"></span>${label}
+      <span class="w-1.5 h-1.5 rounded-full ${dot}"></span>${esc(label)}
     </span>`;
   }).join("");
 }
@@ -102,48 +139,19 @@ function serviceRow(svc) {
   const pills = checksPills(svc.checks);
   const detailCell = pills
     ? `<div class="flex gap-3 flex-wrap">${pills}</div>`
-    : `<span class="truncate">${svc.detail ?? ""}</span>`;
+    : `<span class="truncate">${esc(svc.detail)}</span>`;
   return `<tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50/50 transition-colors">
-    <td class="py-3 px-4 text-sm font-medium text-gray-800">${svc.name}</td>
+    <td class="py-3 px-4 text-sm font-medium text-gray-800">${esc(svc.name)}</td>
     <td class="py-3 px-4">${statusBadge(svc.status)}</td>
     <td class="py-3 px-4 text-sm text-gray-400 font-mono tabular-nums w-20">${latency}</td>
     <td class="py-3 px-4 text-xs text-gray-400 max-w-xs hidden sm:table-cell">${detailCell}</td>
   </tr>`;
 }
 
-function networkCard(network) {
-  if (!network || !network.br0) return "";
-  const { ipv4 = [], ipv6 = [], error } = network.br0;
-  if (error && !ipv4.length && !ipv6.length) {
-    return `<div class="rounded-xl border border-gray-200 bg-white shadow-sm px-5 py-4 text-xs text-gray-400">
-      br0: ${error}
-    </div>`;
-  }
-  const rows = [
-    ...ipv4.map(a => ({ label: "IPv4", addr: a })),
-    ...ipv6.map(a => ({ label: "IPv6", addr: a })),
-  ];
-  return `<div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-    <div class="px-5 py-3.5 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between">
-      <h2 class="text-sm font-semibold text-gray-700">Network — br0</h2>
-      <span class="text-xs text-gray-400">bridge adapter</span>
-    </div>
-    <div class="px-5 py-3 space-y-2">
-      ${rows.map(r => `<div class="flex items-center gap-3">
-        <span class="text-xs text-gray-400 w-8 flex-shrink-0">${r.label}</span>
-        <span class="text-sm font-mono text-gray-700 break-all">${r.addr}</span>
-      </div>`).join("")}
-    </div>
-  </div>`;
-}
-
 function serviceTable(rows, caption, subtitle) {
   if (!rows.length) return "";
-  return `<div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-    <div class="px-5 py-3.5 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between">
-      <h2 class="text-sm font-semibold text-gray-700">${caption}</h2>
-      ${subtitle ? `<span class="text-xs text-gray-400">${subtitle}</span>` : ""}
-    </div>
+  return `<div class="${CARD} overflow-hidden">
+    ${cardHeader(caption, subtitle ? `<span class="text-xs text-gray-400">${esc(subtitle)}</span>` : "")}
     <table class="w-full">
       <thead>
         <tr class="text-xs text-gray-400 border-b border-gray-100 bg-white">
@@ -158,37 +166,82 @@ function serviceTable(rows, caption, subtitle) {
   </div>`;
 }
 
-function render() {
-  const lastCheckedEl = document.getElementById("last-checked");
-  if (state.lastChecked) {
-    lastCheckedEl.textContent = `Last checked ${new Date(state.lastChecked).toLocaleTimeString()}`;
-  } else {
-    lastCheckedEl.textContent = "";
-  }
+function networkCard(network) {
+  const ifaces = Object.entries(network || {});
+  if (!ifaces.length) return "";
+  const body = ifaces.map(([name, { ipv4 = [], ipv6 = [], error }]) => {
+    const rows = [
+      ...ipv4.map(a => ({ label: "IPv4", addr: a })),
+      ...ipv6.map(a => ({ label: "IPv6", addr: a })),
+    ];
+    const content = rows.length
+      ? rows.map(r => `<div class="flex items-center gap-3">
+          <span class="text-xs text-gray-400 w-8 flex-shrink-0">${r.label}</span>
+          <span class="text-sm font-mono text-gray-700 break-all">${esc(r.addr)}</span>
+        </div>`).join("")
+      : `<p class="text-xs text-gray-400">${esc(error || "no addresses")}</p>`;
+    return `<div class="space-y-2">
+      <p class="text-xs font-medium text-gray-500 font-mono">${esc(name)}</p>${content}
+    </div>`;
+  }).join("");
+  return `<div class="${CARD} overflow-hidden">
+    ${cardHeader("Network")}
+    <div class="px-5 py-3 space-y-4">${body}</div>
+  </div>`;
+}
 
-  const uptimeEl = document.getElementById("uptime");
-  if (uptimeEl) uptimeEl.textContent = state.uptime ? `up ${state.uptime}` : "";
+function powerButtons(server) {
+  const btn = "text-xs border rounded-lg px-2.5 py-1 transition select-none";
+  return `<div class="flex gap-2">
+    <button onclick="powerAction('${server.id}', 'reboot')"
+      class="${btn} text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-800">Reboot</button>
+    <button onclick="powerAction('${server.id}', 'shutdown')"
+      class="${btn} text-red-600 border-red-200 hover:bg-red-50">Shut down</button>
+  </div>`;
+}
 
-  document.getElementById("network-section").innerHTML = networkCard(state.network);
+function serverColumn(server) {
+  const { status, data } = state.servers[server.id] ?? { status: "loading" };
+  const meta = data
+    ? [data.server_hostname, data.uptime && `up ${data.uptime}`].filter(Boolean).join(" · ")
+    : new URL(server.agent_url).host;
 
-  const serverSection = document.getElementById("server-section");
-  if (state.serverStatus === "loading") {
-    serverSection.innerHTML = `<div class="rounded-xl border border-gray-200 bg-white shadow-sm p-10 text-center text-sm text-gray-400 animate-pulse">Checking services…</div>`;
-  } else if (state.serverStatus === "unreachable") {
-    serverSection.innerHTML = `<div class="rounded-xl border border-red-200 bg-red-50 p-8 text-center space-y-1">
-      <p class="font-semibold text-red-700">Status server unreachable</p>
-      <p class="text-sm text-red-500">The server may be offline, or you may be outside the network.</p>
+  const header = `<div class="${CARD} px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
+    <div class="min-w-0">
+      <div class="flex items-center gap-2">
+        <h2 class="text-sm font-semibold text-gray-900">${esc(server.name)}</h2>
+        ${statusBadge(status)}
+      </div>
+      <p class="text-xs text-gray-400 font-mono mt-1 truncate">${esc(meta)}</p>
+    </div>
+    ${data?.power_enabled ? powerButtons(server) : ""}
+  </div>`;
+
+  let body;
+  if (status === "loading") {
+    body = `<div class="${CARD} p-10 text-center text-sm text-gray-400 animate-pulse">Checking services…</div>`;
+  } else if (status === "unreachable") {
+    body = `<div class="rounded-xl border border-red-200 bg-red-50 p-8 text-center space-y-1">
+      <p class="font-semibold text-red-700">Status agent unreachable</p>
+      <p class="text-sm text-red-500">The server may be offline, or the agent is not running.</p>
     </div>`;
   } else {
-    const hostname = state.serverHostname ? `via ${state.serverHostname}` : "via CGI";
-    serverSection.innerHTML = `<div class="space-y-4">${state.groups
-      .map((g, i) => serviceTable(g.services, g.label, i === 0 ? hostname : ""))
-      .join("")}</div>`;
+    body = [networkCard(data.network), ...data.groups.map(g => serviceTable(g.services, g.label))].join("");
   }
+
+  return `<div class="space-y-4">${header}${body}</div>`;
+}
+
+function render() {
+  document.getElementById("last-checked").textContent = state.lastChecked
+    ? `Last checked ${state.lastChecked.toLocaleTimeString()}`
+    : "";
+
+  document.getElementById("servers-section").innerHTML = servers().map(serverColumn).join("");
 
   const directSection = document.getElementById("direct-section");
   if (state.directChecksLoading && !state.directChecks.length) {
-    directSection.innerHTML = `<div class="rounded-xl border border-gray-200 bg-white shadow-sm p-6 text-center text-sm text-gray-400 animate-pulse">Checking connectivity…</div>`;
+    directSection.innerHTML = `<div class="${CARD} p-6 text-center text-sm text-gray-400 animate-pulse">Checking connectivity…</div>`;
   } else if (state.directChecks.length) {
     const subtitle = state.directChecksLoading ? "refreshing…" : "from your browser";
     directSection.innerHTML = serviceTable(state.directChecks, "Browser Connectivity", subtitle);
@@ -255,9 +308,8 @@ document.addEventListener("visibilitychange", () => {
 document.addEventListener("DOMContentLoaded", () => {
   const cfg = window.CONFIG;
   document.title = cfg.SITE_TITLE || "Server Status";
-  document.getElementById("site-title").textContent = cfg.SITE_TITLE || "Home Server Status";
-  document.getElementById("server-name").textContent = cfg.SERVER_NAME || "";
-  document.getElementById("footer-host").textContent = cfg.SERVER_NAME || "";
+  document.getElementById("site-title").textContent = cfg.SITE_TITLE || "Server Status";
+  document.getElementById("server-name").textContent = servers().map(s => s.name).join(" · ");
   refresh();
   startAutoRefresh();
 });
