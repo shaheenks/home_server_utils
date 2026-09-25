@@ -2,12 +2,12 @@ CONFIG     ?=
 AGENT_DIR  := /opt/status-agent
 ETC_DIR    := /etc/status-agent
 TOKEN_FILE := $(ETC_DIR)/power_token
-SERVE_DIR  := .
+SERVE_DIR  := public
 SERVE_PORT := 8080
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install token logs serve
+.PHONY: help install token logs serve publish
 
 help:
 	@echo "Usage: make <target>"
@@ -18,6 +18,7 @@ help:
 	@echo "  logs                Follow the agent's logs"
 	@echo "  serve               Serve the dashboard locally at http://localhost:$(SERVE_PORT)"
 	@echo "                        Override port: make serve SERVE_PORT=9000"
+	@echo "  publish             Deploy the dashboard (public/) to Cloudflare Workers"
 	@echo ""
 
 install:
@@ -49,3 +50,6 @@ logs:
 serve:
 	@echo "Serving $(SERVE_DIR) at http://localhost:$(SERVE_PORT)"
 	python3 -m http.server $(SERVE_PORT) --directory $(SERVE_DIR)
+
+publish:
+	npx wrangler deploy

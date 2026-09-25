@@ -1,6 +1,7 @@
 {
   // Static dashboard served by Cloudflare Workers (assets only, no Worker script).
+  // Only public/ is uploaded.
   "name": "server-status",
   "compatibility_date": "2026-09-01",
-  "assets": { "directory": "." }
+  "assets": { "directory": "./public" }
 }

@@ -22,12 +22,11 @@ home_server_utils/
 │   ├── status-agent.sudoers  ← allows poweroff/reboot only
 │   ├── apache.conf         ← reverse-proxy snippets: /agent/ → 127.0.0.1:8765
 │   └── nginx.conf
-├── index.html              ← dashboard
-├── static/
+├── public/                 ← dashboard: the only folder uploaded to Cloudflare
+│   ├── index.html
 │   ├── config.js           ← servers, direct checks, branding
 │   └── app.js
-├── wrangler.jsonc          ← Cloudflare Workers deploy config
-└── .assetsignore           ← keeps non-dashboard files off the public site
+└── wrangler.jsonc          ← Cloudflare Workers deploy config
 ```
 
 ## Agent API
@@ -156,11 +155,11 @@ sudo rm /usr/lib/cgi-bin/status.cgi /usr/lib/cgi-bin/ping.cgi
 
 ## Dashboard
 
-For each server, the dashboard shows its status, host information, network addresses, service groups, and power buttons. A **Browser Connectivity** table pings each agent, plus any `DIRECT_CHECKS`, straight from your browser. To add a server, add an entry to `SERVERS` in [static/config.js](static/config.js).
+For each server, the dashboard shows its status, host information, network addresses, service groups, and power buttons. A **Browser Connectivity** table pings each agent, plus any `DIRECT_CHECKS`, straight from your browser. To add a server, add an entry to `SERVERS` in [public/config.js](public/config.js).
 
 ### Configuration
 
-All settings are in [static/config.js](static/config.js):
+All settings are in [public/config.js](public/config.js):
 
 | Setting | Purpose |
 |---|---|
@@ -174,19 +173,25 @@ Probes, interfaces and allowed origins are configured on each server in `config/
 ### Local development
 
 ```bash
-make serve                  # http://localhost:8080 (allowed by both agent configs)
+make serve                  # serves public/ at http://localhost:8080 (allowed by both agent configs)
 ```
 
 ### Deploy to Cloudflare Workers
 
-The dashboard is static files with no build step. [wrangler.jsonc](wrangler.jsonc) serves the repo root as Worker static assets. [.assetsignore](.assetsignore) keeps everything except `index.html` and `static/` out of the upload.
+The dashboard is the three files in `public/`, with no build step. [wrangler.jsonc](wrangler.jsonc) uploads that folder as Worker static assets, and nothing else in the repo is published.
+
+**From your machine** (needs Node.js):
 
 ```bash
 npx wrangler login          # first time only
-npx wrangler deploy
+make publish                # = npx wrangler deploy
 ```
 
+**Or from Git:** in the Cloudflare dashboard, go to **Workers & Pages → Create → Import a repository**, pick `home_server_utils`, leave the build command empty, and set the deploy command to `npx wrangler deploy`. Every push to the production branch then redeploys.
+
 Then, in the Cloudflare dashboard, go to **Workers & Pages → server-status → Settings → Domains & Routes** and add a custom domain under `shaheenks.co.in`, e.g. `status.shaheenks.co.in`.
+
+The Worker name comes from `name` in `wrangler.jsonc`. If your existing Worker has a different name, change it to match, or the deploy creates a second Worker.
 
 > The dashboard must be served from `shaheenks.co.in` or one of its subdomains. The agents only accept requests from those origins (plus `localhost:8080`), so on the default `*.workers.dev` URL the page loads but every server shows as unreachable. To use another origin, add it to `allowed_origins` in both `config/*.json` and rerun `make install` on each server.
 
