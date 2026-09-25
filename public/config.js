@@ -9,10 +9,6 @@ window.CONFIG = {
   // Auto-refresh interval in seconds (0 to disable)
   REFRESH_INTERVAL_S: 30,
 
-  // Extra direct browser checks. Each server's /ping is checked automatically.
-  // e.g. { id: "trex_access", name: "Trex Server Access", url: "https://trex.shaheenks.co.in/health/ping", expect_status: 200 }
-  DIRECT_CHECKS: [],
-
   // Branding
   SITE_TITLE: "Server Status",
 };

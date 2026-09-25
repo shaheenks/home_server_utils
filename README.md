@@ -24,7 +24,7 @@ home_server_utils/
 │   └── nginx.conf
 ├── public/                 ← dashboard: the only folder uploaded to Cloudflare
 │   ├── index.html
-│   ├── config.js           ← servers, direct checks, branding
+│   ├── config.js           ← servers, refresh interval, branding
 │   └── app.js
 └── wrangler.jsonc          ← Cloudflare Workers deploy config
 ```
@@ -155,7 +155,7 @@ sudo rm /usr/lib/cgi-bin/status.cgi /usr/lib/cgi-bin/ping.cgi
 
 ## Dashboard
 
-For each server, the dashboard shows its status, host information, network addresses, service groups, and power buttons. A **Browser Connectivity** table pings each agent, plus any `DIRECT_CHECKS`, straight from your browser. To add a server, add an entry to `SERVERS` in [public/config.js](public/config.js).
+For each server, the dashboard shows its status, host information, network addresses, service groups, and power buttons. To add a server, add an entry to `SERVERS` in [public/config.js](public/config.js).
 
 ### Configuration
 
@@ -165,7 +165,6 @@ All settings are in [public/config.js](public/config.js):
 |---|---|
 | `SERVERS` | `{ id, name, agent_url }` per server; `agent_url` is the `/agent` base without a trailing slash |
 | `REFRESH_INTERVAL_S` | Interval for the Auto toggle (off by default); the page also refreshes when the tab becomes visible |
-| `DIRECT_CHECKS` | Extra URLs fetched by the browser: `{ id, name, url, expect_status }`. Each target must send CORS headers. |
 | `SITE_TITLE` | Page title and header |
 
 Probes, interfaces and allowed origins are configured on each server in `config/<host>.json`, not here.
@@ -189,7 +188,7 @@ make publish                # = npx wrangler deploy
 
 **Or from Git:** in the Cloudflare dashboard, go to **Workers & Pages → Create → Import a repository**, pick `home_server_utils`, leave the build command empty, and set the deploy command to `npx wrangler deploy`. Every push to the production branch then redeploys.
 
-Then, in the Cloudflare dashboard, go to **Workers & Pages → server-status → Settings → Domains & Routes** and add a custom domain under `shaheenks.co.in`, e.g. `status.shaheenks.co.in`.
+Then, in the Cloudflare dashboard, go to **Workers & Pages → <your Worker> → Settings → Domains & Routes** and add a custom domain under `shaheenks.co.in`, e.g. `status.shaheenks.co.in`.
 
 The Worker name comes from `name` in `wrangler.jsonc`. If your existing Worker has a different name, change it to match, or the deploy creates a second Worker.
 

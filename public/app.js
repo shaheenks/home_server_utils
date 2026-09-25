@@ -3,8 +3,6 @@
 const state = {
   servers: {},            // id → { status, data }
   lastChecked: null,
-  directChecks: [],
-  directChecksLoading: true,
 };
 
 const servers = () => window.CONFIG.SERVERS || [];
@@ -25,43 +23,12 @@ async function fetchServerStatus(server) {
   }
 }
 
-async function runDirectCheck(check) {
-  const start = performance.now();
-  try {
-    const resp = await fetch(check.url, { cache: "no-store" });
-    const latency = Math.round(performance.now() - start);
-    return {
-      ...check,
-      status: resp.status === check.expect_status ? "ok" : "degraded",
-      latency_ms: latency,
-      detail: `HTTP ${resp.status}`,
-    };
-  } catch (e) {
-    return { ...check, status: "down", latency_ms: null, detail: e.message };
-  }
-}
-
-async function runAllDirectChecks() {
-  const checks = [
-    ...servers().map(s => ({
-      id: `${s.id}_ping`,
-      name: `${s.name} Reachability`,
-      url: `${s.agent_url}/ping`,
-      expect_status: 200,
-    })),
-    ...(window.CONFIG.DIRECT_CHECKS || []),
-  ];
-  state.directChecksLoading = true;
-  state.directChecks = await Promise.all(checks.map(runDirectCheck));
-  state.directChecksLoading = false;
-}
-
 async function refresh() {
   for (const s of servers()) {
     state.servers[s.id] ??= { status: "loading", data: null };
   }
   render();
-  await Promise.all([...servers().map(fetchServerStatus), runAllDirectChecks()]);
+  await Promise.all(servers().map(fetchServerStatus));
   state.lastChecked = new Date();
   render();
 }
@@ -238,14 +205,6 @@ function render() {
     : "";
 
   document.getElementById("servers-section").innerHTML = servers().map(serverColumn).join("");
-
-  const directSection = document.getElementById("direct-section");
-  if (state.directChecksLoading && !state.directChecks.length) {
-    directSection.innerHTML = `<div class="${CARD} p-6 text-center text-sm text-gray-400 animate-pulse">Checking connectivity…</div>`;
-  } else if (state.directChecks.length) {
-    const subtitle = state.directChecksLoading ? "refreshing…" : "from your browser";
-    directSection.innerHTML = serviceTable(state.directChecks, "Browser Connectivity", subtitle);
-  }
 }
 
 // ── Auto-refresh ──────────────────────────────────────────────────────────────
