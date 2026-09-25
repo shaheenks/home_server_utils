@@ -234,8 +234,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Max-Age", "600")
         self.end_headers()
 
-    def do_GET(self):
+    def _route(self):
+        """Request path without query string or the /agent prefix, so the agent works
+        whether or not the proxy strips it (e.g. a Cloudflare Tunnel pointed straight here)."""
         path = self.path.split("?", 1)[0]
+        return path[len("/agent"):] if path.startswith("/agent/") else path
+
+    def do_GET(self):
+        path = self._route()
         if path == "/ping":
             self._json(200, {"ok": True, "hostname": socket.gethostname()})
         elif path == "/status":
@@ -244,7 +250,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        if self.path.split("?", 1)[0] != "/power":
+        if self._route() != "/power":
             return self._json(404, {"error": "not found"})
         if not self.agent.power_token:
             return self._json(403, {"error": "power actions are disabled on this server"})
