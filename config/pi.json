@@ -1,0 +1,9 @@
+{
+  "listen": "127.0.0.1",
+  "port": 8765,
+  "allowed_origins": ["http://localhost:8080"],
+  "allowed_origin_pattern": "https://([a-z0-9-]+[.])?shaheenks[.]co[.]in",
+  "power_token_file": "/etc/status-agent/power_token",
+  "interfaces": ["eth0", "wlan0"],
+  "groups": []
+}

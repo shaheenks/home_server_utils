@@ -1,0 +1,17 @@
+[Unit]
+Description=Home server status agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=status-agent
+Group=status-agent
+ExecStart=/usr/bin/python3 /opt/status-agent/agent.py --config /etc/status-agent/config.json
+Restart=on-failure
+RestartSec=5
+# No NoNewPrivileges: power actions go through sudo (see status-agent.sudoers).
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

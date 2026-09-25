@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Server Status</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="static/config.js"></script>
+  <script src="config.js"></script>
 </head>
 <body class="min-h-full bg-gray-50 font-sans text-gray-900 antialiased">
 
@@ -15,7 +15,7 @@
       <div class="min-w-0">
         <h1 id="site-title" class="text-sm font-semibold text-gray-900 truncate"></h1>
         <p class="text-xs text-gray-400 font-mono mt-0.5 truncate">
-          <span id="server-name"></span><span id="uptime" class="ml-2 text-gray-300"></span>
+          <span id="server-name"></span>
         </p>
       </div>
       <div class="flex items-center gap-3 flex-shrink-0">
@@ -45,31 +45,16 @@
       <span id="next-refresh"></span>
     </div>
 
-    <!-- 2-column grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-
-      <!-- Left column: Network + Browser Connectivity -->
-      <div class="space-y-4">
-        <div id="network-section"></div>
-        <div id="direct-section"></div>
-      </div>
-
-      <!-- Right column: Service Health + TREX -->
-      <div id="server-section">
-        <div class="rounded-xl border border-gray-200 bg-white shadow-sm p-10 text-center text-sm text-gray-400 animate-pulse">
-          Checking services…
-        </div>
-      </div>
-
-    </div>
+    <!-- One column per server -->
+    <div id="servers-section" class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start"></div>
 
   </main>
 
   <!-- Footer -->
   <footer class="text-center text-xs text-gray-300 py-10 space-y-0.5">
-    <p>Checks run from your browser &amp; via CGI at <span id="footer-host" class="font-mono"></span></p>
+    <p>Checks run from your browser &amp; via the status agent on each server</p>
   </footer>
 
-  <script src="static/app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
