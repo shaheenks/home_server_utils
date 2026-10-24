@@ -28,6 +28,11 @@
           </button>
         </div>
         <button
+          onclick="openTokenModal()"
+          class="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 active:bg-gray-100 transition select-none">
+          Tokens
+        </button>
+        <button
           onclick="refresh()"
           class="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 active:bg-gray-100 transition select-none">
           Refresh
@@ -54,6 +59,25 @@
   <footer class="text-center text-xs text-gray-300 py-10 space-y-0.5">
     <p>Checks run from your browser &amp; via the status agent on each server</p>
   </footer>
+
+  <!-- Token dialog: one token per server, saved to sessionStorage -->
+  <dialog id="token-modal" aria-labelledby="token-modal-title"
+    onclick="if (event.target === this) closeTokenModal()"
+    class="w-[calc(100%-2rem)] max-w-md p-0 rounded-xl border border-gray-200 shadow-xl backdrop:bg-gray-900/40">
+    <form onsubmit="saveTokens(event)">
+      <div class="px-5 py-4 border-b border-gray-100">
+        <h2 id="token-modal-title" class="text-sm font-semibold text-gray-900">Server tokens</h2>
+        <p class="text-xs text-gray-400 mt-1">Each server has its own token. They're kept in this browser tab only and forgotten when you close it.</p>
+      </div>
+      <div id="token-fields" class="px-5 py-4 space-y-4"></div>
+      <div class="px-5 py-3 border-t border-gray-100 bg-gray-50/60 flex justify-end gap-2">
+        <button type="button" onclick="closeTokenModal()"
+          class="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg px-3 py-1.5 bg-white hover:bg-gray-50 transition">Cancel</button>
+        <button type="submit"
+          class="text-xs text-white bg-gray-900 hover:bg-gray-700 rounded-lg px-3 py-1.5 transition">Save</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="app.js"></script>
 </body>

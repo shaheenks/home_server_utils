@@ -4,6 +4,7 @@ window.CONFIG = {
   SERVERS: [
     { id: "ubuntu", name: "Linux Server", agent_url: "https://dev.shaheenks.co.in/agent" },
     { id: "pi", name: "Raspberry Pi", agent_url: "https://rpi.shaheenks.co.in/agent" },
+    { id: "windows", name: "Windows Desktop", agent_url: "https://pc.shaheenks.co.in/agent" },
   ],
 
   // Auto-refresh interval in seconds (0 to disable)
