@@ -28,10 +28,12 @@ home_server_utils/
 │       ├── install.ps1     ← installs the agent as a SYSTEM scheduled task
 │       ├── token.ps1       ← generates the power token
 │       └── web.config      ← IIS reverse proxy: /agent/ → 127.0.0.1:8765
-├── public/                 ← dashboard: the only folder uploaded to Cloudflare
-│   ├── index.html
-│   ├── config.js           ← servers, refresh interval, branding
-│   └── app.js
+├── public/                 ← website: the only folder uploaded to Cloudflare
+│   ├── index.html          ← welcome page (/)
+│   ├── config.js           ← servers, refresh interval, branding (shared by both pages)
+│   └── dashboard/          ← system dashboard (/dashboard/)
+│       ├── index.html
+│       └── app.js
 └── wrangler.jsonc          ← Cloudflare Workers deploy config
 ```
 
@@ -215,9 +217,14 @@ Then redeploy the dashboard (`make publish`) and check it as in [Verify](#verify
 - **Update:** `git pull`, then rerun `install.ps1`. The power token is left in place.
 - **Uninstall:** `Unregister-ScheduledTask status-agent`, then delete both `status-agent` folders.
 
-## Dashboard
+## Website
 
-For each server, the dashboard shows its status, host information, network addresses, service groups, and power buttons. To add a server, add an entry to `SERVERS` in [public/config.js](public/config.js).
+The site has two pages:
+
+- **Welcome page** (`/`): a title and tagline, a link to the dashboard, and a **Services** list. Services that run the status agent show an online/unreachable dot from the agent's public `/ping`; others, such as OpenWebRX, get an Open link.
+- **System dashboard** (`/dashboard/`): for each server, its status, host information, network addresses, service groups, and power buttons.
+
+To add a server to the dashboard, add an entry to `SERVERS` in [public/config.js](public/config.js). The welcome page lists only what's in `HOME_SERVICES`, in that order.
 
 ### Configuration
 
@@ -227,19 +234,22 @@ All settings are in [public/config.js](public/config.js):
 |---|---|
 | `SERVERS` | `{ id, name, agent_url }` per server; `agent_url` is the `/agent` base without a trailing slash |
 | `REFRESH_INTERVAL_S` | Interval for the Auto toggle (off by default); the page also refreshes when the tab becomes visible |
-| `SITE_TITLE` | Page title and header |
+| `SITE_TITLE` | Dashboard page title and header |
+| `HOME_TITLE`, `HOME_TAGLINE` | Welcome page heading and the line under it |
+| `HOME_SERVICES` | Welcome page Services list, in order: `{ name, server }` for a `SERVERS` id (status dot) or `{ name, url }` (Open link) |
 
 Probes, interfaces and allowed origins are configured on each server in `config/<host>.json`, not here.
 
 ### Local development
 
 ```bash
-make serve                  # serves public/ at http://localhost:8080 (allowed by both agent configs)
+make serve                  # serves public/ at http://localhost:8080 (allowed by all agent configs)
+                            # dashboard: http://localhost:8080/dashboard/
 ```
 
 ### Deploy to Cloudflare Workers
 
-The dashboard is the three files in `public/`, with no build step. [wrangler.jsonc](wrangler.jsonc) uploads that folder as Worker static assets, and nothing else in the repo is published.
+The website is the static files in `public/`, with no build step. [wrangler.jsonc](wrangler.jsonc) uploads that folder as Worker static assets, and nothing else in the repo is published.
 
 **From your machine** (needs Node.js):
 

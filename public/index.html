@@ -3,82 +3,106 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Server Status</title>
+  <title>Welcome</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="config.js"></script>
 </head>
-<body class="min-h-full bg-gray-50 font-sans text-gray-900 antialiased">
+<body class="min-h-full bg-gray-50 font-sans text-gray-900 antialiased flex flex-col">
 
-  <!-- Header -->
-  <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
-    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-      <div class="min-w-0">
-        <h1 id="site-title" class="text-sm font-semibold text-gray-900 truncate"></h1>
-        <p class="text-xs text-gray-400 font-mono mt-0.5 truncate">
-          <span id="server-name"></span>
-        </p>
-      </div>
-      <div class="flex items-center gap-3 flex-shrink-0">
-        <div class="flex items-center gap-1.5 select-none">
-          <span class="text-xs text-gray-400">Auto</span>
-          <button id="refresh-toggle" onclick="toggleAutoRefresh()"
-            role="switch" aria-checked="false" title="Toggle auto-refresh"
-            class="relative w-8 h-4 rounded-full bg-gray-300 transition-colors focus:outline-none cursor-pointer">
-            <span id="toggle-thumb" class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform translate-x-0"></span>
-          </button>
+  <main class="flex-1 w-full max-w-2xl mx-auto px-4 py-16 space-y-8">
+
+    <!-- Intro -->
+    <section>
+      <h1 id="home-title" class="text-2xl font-semibold text-gray-900"></h1>
+      <p id="home-tagline" class="text-sm text-gray-500 mt-2"></p>
+    </section>
+
+    <!-- Dashboard link -->
+    <a href="dashboard/"
+      class="block rounded-xl border border-gray-200 bg-white shadow-sm px-5 py-4 hover:border-gray-300 hover:shadow transition group">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <h2 class="text-sm font-semibold text-gray-900">System dashboard</h2>
+          <p class="text-xs text-gray-400 mt-1">Service health, uptime, network addresses and power controls for each server.</p>
         </div>
-        <button
-          onclick="openTokenModal()"
-          class="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 active:bg-gray-100 transition select-none">
-          Tokens
-        </button>
-        <button
-          onclick="refresh()"
-          class="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 active:bg-gray-100 transition select-none">
-          Refresh
-        </button>
+        <span class="text-gray-300 group-hover:text-gray-600 transition text-lg" aria-hidden="true">→</span>
       </div>
-    </div>
-  </header>
+    </a>
 
-  <!-- Main content -->
-  <main class="max-w-5xl mx-auto px-4 py-6">
-
-    <!-- Meta row -->
-    <div class="flex items-center justify-between text-xs text-gray-400 px-0.5 mb-4">
-      <span id="last-checked"></span>
-      <span id="next-refresh"></span>
-    </div>
-
-    <!-- One column per server -->
-    <div id="servers-section" class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start"></div>
+    <!-- Services -->
+    <section class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-gray-100 bg-gray-50/60">
+        <h2 class="text-sm font-semibold text-gray-700">Services</h2>
+      </div>
+      <ul id="service-list" class="divide-y divide-gray-100"></ul>
+    </section>
 
   </main>
 
-  <!-- Footer -->
-  <footer class="text-center text-xs text-gray-300 py-10 space-y-0.5">
-    <p>Checks run from your browser &amp; via the status agent on each server</p>
+  <footer class="text-center text-xs text-gray-300 py-10">
+    <p>Status checks run from your browser</p>
   </footer>
 
-  <!-- Token dialog: one token per server, saved to sessionStorage -->
-  <dialog id="token-modal" aria-labelledby="token-modal-title"
-    onclick="if (event.target === this) closeTokenModal()"
-    class="w-[calc(100%-2rem)] max-w-md p-0 rounded-xl border border-gray-200 shadow-xl backdrop:bg-gray-900/40">
-    <form onsubmit="saveTokens(event)">
-      <div class="px-5 py-4 border-b border-gray-100">
-        <h2 id="token-modal-title" class="text-sm font-semibold text-gray-900">Server tokens</h2>
-        <p class="text-xs text-gray-400 mt-1">Each server has its own token. They're kept in this browser tab only and forgotten when you close it.</p>
-      </div>
-      <div id="token-fields" class="px-5 py-4 space-y-4"></div>
-      <div class="px-5 py-3 border-t border-gray-100 bg-gray-50/60 flex justify-end gap-2">
-        <button type="button" onclick="closeTokenModal()"
-          class="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg px-3 py-1.5 bg-white hover:bg-gray-50 transition">Cancel</button>
-        <button type="submit"
-          class="text-xs text-white bg-gray-900 hover:bg-gray-700 rounded-lg px-3 py-1.5 transition">Save</button>
-      </div>
-    </form>
-  </dialog>
+  <script>
+    const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-  <script src="app.js"></script>
+    const DOT = {
+      checking: ["bg-gray-300 animate-pulse", "Checking…"],
+      online:   ["bg-green-400", "Online"],
+      offline:  ["bg-gray-400", "Unreachable"],
+    };
+
+    // Agent-backed services show a status dot; the rest link to their URL.
+    function row(service, i, state) {
+      const right = service.agent_url
+        ? `<span class="inline-flex items-center gap-1.5 text-xs text-gray-500 flex-shrink-0">
+            <span class="w-1.5 h-1.5 rounded-full ${DOT[state][0]}"></span>${DOT[state][1]}
+          </span>`
+        : `<a href="${esc(service.url)}" target="_blank" rel="noopener"
+            class="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 transition flex-shrink-0">Open →</a>`;
+      return `<li id="svc-${i}" class="px-5 py-3 flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-gray-800">${esc(service.name)}</p>
+          <p class="text-xs text-gray-400 font-mono truncate">${esc(service.host)}</p>
+        </div>
+        ${right}
+      </li>`;
+    }
+
+    // /ping is public: it only says whether the agent answers.
+    async function ping(agentUrl) {
+      try {
+        const resp = await fetch(`${agentUrl}/ping`, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+        return resp.ok ? "online" : "offline";
+      } catch {
+        return "offline";
+      }
+    }
+
+    // HOME_SERVICES entries with "server" borrow that SERVERS entry's agent_url.
+    function services(cfg) {
+      const byId = Object.fromEntries((cfg.SERVERS || []).map(s => [s.id, s]));
+      return (cfg.HOME_SERVICES || []).map(svc => {
+        const agentUrl = byId[svc.server]?.agent_url;
+        return { ...svc, agent_url: agentUrl, host: new URL(agentUrl || svc.url).host };
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const cfg = window.CONFIG;
+      const title = cfg.HOME_TITLE || "Welcome";
+      document.title = title;
+      document.getElementById("home-title").textContent = title;
+      document.getElementById("home-tagline").textContent = cfg.HOME_TAGLINE || "";
+
+      const list = services(cfg);
+      document.getElementById("service-list").innerHTML = list.map((s, i) => row(s, i, "checking")).join("");
+      list.forEach((s, i) => {
+        if (!s.agent_url) return;
+        ping(s.agent_url).then(state => { document.getElementById(`svc-${i}`).outerHTML = row(s, i, state); });
+      });
+    });
+  </script>
 </body>
 </html>

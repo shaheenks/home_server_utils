@@ -218,35 +218,21 @@ function serviceTable(rows, caption, subtitle) {
 
 const SMALL_BTN = "text-xs border rounded-lg px-2.5 py-1 transition select-none text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-800";
 
-function networkCard(server, data, tokenInvalid) {
-  // Token-aware agents hide addresses until the request carries the server's token.
-  if (data.authorized === false) {
-    const message = !data.power_enabled
-      ? "Addresses are hidden. This server has no token yet, so they can't be unlocked."
-      : tokenInvalid
-        ? `<span class="text-red-600">The saved token was rejected.</span> Enter the right one to show addresses.`
-        : "Addresses are hidden. Add this server's token to show them.";
-    const button = data.power_enabled
-      ? `<button onclick="openTokenModal('${server.id}')" class="${SMALL_BTN}">Add token</button>`
-      : "";
-    return `<div class="${CARD} overflow-hidden">
-      ${cardHeader("Network", button)}
-      <p class="px-5 py-3 text-xs text-gray-400">${message}</p>
-    </div>`;
-  }
-  const ifaces = Object.entries(data.network || {});
-  if (!ifaces.length) return "";
-  const body = ifaces.map(([name, { ipv4 = [], ipv6 = [], error }]) => {
-    const rows = [
+function networkCard(data) {
+  // Only interfaces with addresses are shown, and no card at all without any. Token-aware
+  // agents send no addresses until the server's token is saved (header → Tokens).
+  const ifaces = Object.entries(data.network || {})
+    .map(([name, { ipv4 = [], ipv6 = [] }]) => [name, [
       ...ipv4.map(a => ({ label: "IPv4", addr: a })),
       ...ipv6.map(a => ({ label: "IPv6", addr: a })),
-    ];
-    const content = rows.length
-      ? rows.map(r => `<div class="flex items-center gap-3">
-          <span class="text-xs text-gray-400 w-8 flex-shrink-0">${r.label}</span>
-          <span class="text-sm font-mono text-gray-700 break-all">${esc(r.addr)}</span>
-        </div>`).join("")
-      : `<p class="text-xs text-gray-400">${esc(error || "no addresses")}</p>`;
+    ]])
+    .filter(([, rows]) => rows.length);
+  if (!ifaces.length) return "";
+  const body = ifaces.map(([name, rows]) => {
+    const content = rows.map(r => `<div class="flex items-center gap-3">
+        <span class="text-xs text-gray-400 w-8 flex-shrink-0">${r.label}</span>
+        <span class="text-sm font-mono text-gray-700 break-all">${esc(r.addr)}</span>
+      </div>`).join("");
     return `<div class="space-y-2">
       <p class="text-xs font-medium text-gray-500 font-mono">${esc(name)}</p>${content}
     </div>`;
@@ -268,10 +254,8 @@ function powerButtons(server) {
 }
 
 function serverColumn(server) {
-  const { status, data, tokenInvalid } = state.servers[server.id] ?? { status: "loading" };
-  const meta = data
-    ? [data.server_hostname, data.uptime && `up ${data.uptime}`].filter(Boolean).join(" · ")
-    : new URL(server.agent_url).host;
+  const { status, data } = state.servers[server.id] ?? { status: "loading" };
+  const meta = [new URL(server.agent_url).host, data?.uptime && `up ${data.uptime}`].filter(Boolean).join(" · ");
 
   const header = `<div class="${CARD} px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
     <div class="min-w-0">
@@ -289,7 +273,7 @@ function serverColumn(server) {
   if (status === "loading") {
     body = `<div class="${CARD} p-10 text-center text-sm text-gray-400 animate-pulse">Checking services…</div>`;
   } else if (data) {
-    body = [networkCard(server, data, tokenInvalid), ...data.groups.map(g => serviceTable(g.services, g.label))].join("");
+    body = [networkCard(data), ...data.groups.map(g => serviceTable(g.services, g.label))].join("");
   }
 
   return `<div class="space-y-4">${header}${body}</div>`;
