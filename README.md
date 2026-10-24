@@ -6,8 +6,9 @@ Status dashboard and agent for the home servers:
 |---|---|
 | Linux (Ubuntu) | `https://dev.shaheenks.co.in/agent/` |
 | Raspberry Pi | `https://rpi.shaheenks.co.in/agent/` |
+| Windows desktop (IIS) | `https://pc.shaheenks.co.in/agent/` (via Cloudflare Tunnel) |
 
-Each server runs the same **status agent**, a small Python service with no dependencies beyond the standard library, managed by systemd. The **dashboard** is a static page hosted on Cloudflare Workers. It queries each agent directly from the browser.
+Each server runs the same **status agent**, a small Python service with no dependencies beyond the standard library, managed by systemd on Linux and by a scheduled task on Windows. The **dashboard** is a static page hosted on Cloudflare Workers. It queries each agent directly from the browser.
 
 ## Structure
 
@@ -16,16 +17,23 @@ home_server_utils/
 ├── agent/agent.py          ← status agent (same file on every server)
 ├── config/
 │   ├── ubuntu.json         ← per-host probes, interfaces, CORS
-│   └── pi.json
+│   ├── pi.json
+│   └── windows.json
 ├── deploy/
 │   ├── status-agent.service
 │   ├── status-agent.sudoers  ← allows poweroff/reboot only
 │   ├── apache.conf         ← reverse-proxy snippets: /agent/ → 127.0.0.1:8765
-│   └── nginx.conf
-├── public/                 ← dashboard: the only folder uploaded to Cloudflare
-│   ├── index.html
-│   ├── config.js           ← servers, refresh interval, branding
-│   └── app.js
+│   ├── nginx.conf
+│   └── windows/
+│       ├── install.ps1     ← installs the agent as a SYSTEM scheduled task
+│       ├── token.ps1       ← generates the power token
+│       └── web.config      ← IIS reverse proxy: /agent/ → 127.0.0.1:8765
+├── public/                 ← website: the only folder uploaded to Cloudflare
+│   ├── index.html          ← welcome page (/)
+│   ├── config.js           ← servers, refresh interval, branding (shared by both pages)
+│   └── dashboard/          ← system dashboard (/dashboard/)
+│       ├── index.html
+│       └── app.js
 └── wrangler.jsonc          ← Cloudflare Workers deploy config
 ```
 
@@ -34,8 +42,10 @@ home_server_utils/
 | Endpoint | Description |
 |---|---|
 | `GET /ping` | `{"ok": true, "hostname": "..."}` — reachability check |
-| `GET /status` | Runs all probes in parallel and returns host info plus groups (see below) |
+| `GET /status` | Runs all probes in parallel and returns host info plus groups (see below). `network` is only filled in with `Authorization: Bearer <token>` |
 | `POST /power` | `{"action": "shutdown" \| "reboot"}` with `Authorization: Bearer <token>`. Returns `202`, then acts after 3s |
+
+The token is the server's power token (see [Power actions](#power-actions)). Without a valid token, `/status` still returns everything except the network addresses, with `"network": {}` and `"authorized": false`. An invalid token gets the same response after a 1s delay. A server with no token never shows its addresses.
 
 ```json
 {
@@ -45,7 +55,8 @@ home_server_utils/
   "uptime": "3d 4h 12m",
   "network": { "enp1s0": { "ipv4": ["192.168.1.10"], "ipv6": ["2001:db8::1"] } },
   "groups": [],
-  "power_enabled": true
+  "power_enabled": true,
+  "authorized": true
 }
 ```
 
@@ -72,8 +83,10 @@ Probes are configured in `config/<host>.json` under `groups[].probes`:
 | `health` | `url` | HTTP JSON `{"checks": {...}}`, e.g. the Trex API `/health` |
 | `systemd` | `unit` | `systemctl is-active` |
 | `kvm` | `vm` | `virsh dominfo` state |
+| `winservice` | `service` | Windows service state via `sc query`, e.g. `W3SVC` for IIS |
+| `iis` | `site` or `pool` | IIS site or application pool state via `appcmd` (needs admin, so works under the SYSTEM task) |
 
-Every probe also needs an `id` and a `name`, and accepts an optional `timeout` in seconds. `interfaces` lists the network interfaces whose global addresses are reported.
+Every probe also needs an `id` and a `name`, and accepts an optional `timeout` in seconds. `interfaces` lists the network interfaces whose global addresses are reported. On Windows these are interface aliases as shown by `Get-NetAdapter`, e.g. `Ethernet` or `Wi-Fi`; loopback and link-local addresses are left out.
 
 ### CORS
 
@@ -143,7 +156,8 @@ This reinstalls the agent and config and restarts the service. The power token i
 - **Off by default:** power actions are disabled until `/etc/status-agent/power_token` exists (`make token`). Delete that file and restart the service to disable them again.
 - **Token handling:** the agent compares the token in constant time and waits 1s after each failed attempt.
 - **Root access:** the agent only gets root through the sudoers rule, which allows exactly `systemctl poweroff` and `systemctl reboot`.
-- **Using it:** the dashboard asks for confirmation, then for the token. After a shutdown, the server stays off until someone powers it on physically.
+- **Tokens on the dashboard:** each server has its own token. Click **Tokens** in the header to add, change or clear them. They're saved in sessionStorage, so they last for that browser tab only. A token unlocks that server's Network card and its **Reboot** and **Shut down** buttons, which stay hidden until its token is saved. A rejected token is dropped, and the dialog marks it as rejected.
+- **Using it:** the dashboard asks for confirmation before acting. After a shutdown, the server stays off until someone powers it on physically.
 
 ### Migrating from the old CGI scripts
 
@@ -153,9 +167,64 @@ The CGI scripts have been replaced by the agent. On the Ubuntu server, remove th
 sudo rm /usr/lib/cgi-bin/status.cgi /usr/lib/cgi-bin/ping.cgi
 ```
 
-## Dashboard
+## Setting up a Windows server (IIS)
 
-For each server, the dashboard shows its status, host information, network addresses, service groups, and power buttons. To add a server, add an entry to `SERVERS` in [public/config.js](public/config.js).
+### Prerequisites
+
+- Python 3 installed **for all users** (e.g. `C:\Python314\python.exe`). The Microsoft Store `python` alias won't run under SYSTEM.
+- A way to publish the agent over HTTPS. `pc.shaheenks.co.in` uses a Cloudflare Tunnel (the `cloudflared` service), so it needs no certificate or IIS modules.
+
+### Install
+
+In an **administrator** PowerShell:
+
+```powershell
+git clone https://github.com/shaheenks/home_server_utils.git
+cd home_server_utils
+# edit config\windows.json first: interface names, IIS site and app pool names
+powershell -ExecutionPolicy Bypass -File .\deploy\windows\install.ps1 -Config config\windows.json   # add -Python <path> if python isn't on PATH
+powershell -ExecutionPolicy Bypass -File .\deploy\windows\token.ps1   # optional: enables shutdown/reboot, prints the token
+```
+
+Windows blocks `.ps1` scripts by default, so `-ExecutionPolicy Bypass` allows just this run without changing the system policy.
+
+`install.ps1` does the following:
+- installs the agent to `C:\Program Files\status-agent\` and the config to `C:\ProgramData\status-agent\config.json`
+- restricts `C:\ProgramData\status-agent\` (config, token, log) to SYSTEM and Administrators
+- registers and starts a `status-agent` scheduled task that runs at startup as SYSTEM and restarts on failure
+
+The agent runs as SYSTEM because `appcmd` needs admin rights to read IIS state, and shutdown needs the shutdown privilege. It still only listens on `127.0.0.1`.
+
+### Publish through the Cloudflare Tunnel
+
+In the Cloudflare dashboard, go to **Zero Trust → Networks → Tunnels → <the PC's tunnel> → Public Hostname** and add a route:
+
+| Field | Value |
+|---|---|
+| Subdomain / Domain | `pc` / `shaheenks.co.in` |
+| Path | `^/agent/` |
+| Service | `HTTP` → `127.0.0.1:8765` |
+
+Place it **above** any catch-all route for `pc.shaheenks.co.in` (e.g. the one pointing at IIS), so other paths keep going to the website. The agent strips the `/agent` prefix itself, and Cloudflare provides the HTTPS certificate.
+
+Then redeploy the dashboard (`make publish`) and check it as in [Verify](#verify), with `HOST=pc.shaheenks.co.in`.
+
+**Without a tunnel:** publish through IIS instead. That needs an HTTPS binding with a valid certificate, plus the [URL Rewrite](https://www.iis.net/downloads/microsoft/url-rewrite) and [Application Request Routing](https://www.iis.net/downloads/microsoft/application-request-routing) modules. Enable the ARR proxy with `appcmd set config -section:system.webServer/proxy /enabled:"True" /commit:apphost`, then copy [deploy/windows/web.config](deploy/windows/web.config) into an `agent` folder at the site root.
+
+### Logs and updates
+
+- **Logs:** `Get-Content C:\ProgramData\status-agent\agent.log -Wait -Tail 50`
+- **Update:** `git pull`, then rerun `install.ps1`. The power token is left in place.
+- **Uninstall:** `Unregister-ScheduledTask status-agent`, then delete both `status-agent` folders.
+
+## Website
+
+The site has two pages:
+
+- **Welcome page** (`/`): a title and tagline, a link to the dashboard, and a **Services** list. Services that run the status agent show an online/unreachable dot from the agent's public `/ping`; others, such as OpenWebRX, get an Open link.
+- **System dashboard** (`/dashboard/`): for each server, its status, host information, network addresses, service groups, and power buttons.
+
+To add a server to the dashboard, add an entry to `SERVERS` in [public/config.js](public/config.js). The welcome page lists only what's in `HOME_SERVICES`, in that order.
 
 ### Configuration
 
@@ -165,19 +234,22 @@ All settings are in [public/config.js](public/config.js):
 |---|---|
 | `SERVERS` | `{ id, name, agent_url }` per server; `agent_url` is the `/agent` base without a trailing slash |
 | `REFRESH_INTERVAL_S` | Interval for the Auto toggle (off by default); the page also refreshes when the tab becomes visible |
-| `SITE_TITLE` | Page title and header |
+| `SITE_TITLE` | Dashboard page title and header |
+| `HOME_TITLE`, `HOME_TAGLINE` | Welcome page heading and the line under it |
+| `HOME_SERVICES` | Welcome page Services list, in order: `{ name, server }` for a `SERVERS` id (status dot) or `{ name, url }` (Open link) |
 
 Probes, interfaces and allowed origins are configured on each server in `config/<host>.json`, not here.
 
 ### Local development
 
 ```bash
-make serve                  # serves public/ at http://localhost:8080 (allowed by both agent configs)
+make serve                  # serves public/ at http://localhost:8080 (allowed by all agent configs)
+                            # dashboard: http://localhost:8080/dashboard/
 ```
 
 ### Deploy to Cloudflare Workers
 
-The dashboard is the three files in `public/`, with no build step. [wrangler.jsonc](wrangler.jsonc) uploads that folder as Worker static assets, and nothing else in the repo is published.
+The website is the static files in `public/`, with no build step. [wrangler.jsonc](wrangler.jsonc) uploads that folder as Worker static assets, and nothing else in the repo is published.
 
 **From your machine** (needs Node.js):
 

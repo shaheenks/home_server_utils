@@ -3,18 +3,23 @@
 
 Endpoints (served on localhost, published through the web server's reverse proxy):
   GET  /ping    reachability check
-  GET  /status  runs the configured probes in parallel and returns JSON
+  GET  /status  runs the configured probes in parallel and returns JSON; network addresses
+                only with "Authorization: Bearer <token>"
   POST /power   {"action": "shutdown" | "reboot"}, requires "Authorization: Bearer <token>"
 
-Standard library only. Configured by a JSON file, see config/*.json.
+Standard library only. Runs on Linux (systemd) and Windows. Configured by a JSON file,
+see config/*.json.
 """
 import argparse
 import hmac
+import ipaddress
 import json
+import os
 import re
 import socket
 import ssl
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -22,10 +27,20 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-POWER_COMMANDS = {
-    "shutdown": ["/usr/bin/systemctl", "poweroff"],
-    "reboot": ["/usr/bin/systemctl", "reboot"],
-}
+IS_WINDOWS = os.name == "nt"
+SYSTEM32 = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
+
+if IS_WINDOWS:
+    # The agent runs as SYSTEM on Windows, so no sudo is involved.
+    POWER_COMMANDS = {
+        "shutdown": [os.path.join(SYSTEM32, "shutdown.exe"), "/s", "/t", "0"],
+        "reboot": [os.path.join(SYSTEM32, "shutdown.exe"), "/r", "/t", "0"],
+    }
+else:
+    POWER_COMMANDS = {
+        "shutdown": ["/usr/bin/systemctl", "poweroff"],
+        "reboot": ["/usr/bin/systemctl", "reboot"],
+    }
 POWER_DELAY_S = 3
 MAX_BODY_BYTES = 1024
 
@@ -91,12 +106,42 @@ def probe_kvm(p):
     return {"status": status, "detail": state}
 
 
+def probe_winservice(p):
+    out = subprocess.run(
+        [os.path.join(SYSTEM32, "sc.exe"), "query", p["service"]],
+        capture_output=True, text=True, timeout=3,
+    ).stdout
+    match = re.search(r"STATE\s+:\s+\d+\s+(\w+)", out)
+    if not match:
+        # e.g. "[SC] EnumQueryServicesStatus:OpenService FAILED 1060: ... does not exist"
+        raise RuntimeError(out.strip().splitlines()[-1] if out.strip() else "sc query failed")
+    state = match.group(1)
+    status = "ok" if state == "RUNNING" else ("degraded" if state.endswith("_PENDING") or state == "PAUSED" else "down")
+    return {"status": status, "detail": state.lower().replace("_", " ")}
+
+
+def probe_iis(p):
+    """IIS site ("site") or application pool ("pool") state, via appcmd. Needs admin rights."""
+    kind, name = ("apppool", p["pool"]) if "pool" in p else ("site", p["site"])
+    result = subprocess.run(
+        [os.path.join(SYSTEM32, "inetsrv", "appcmd.exe"), "list", kind, f"/name:{name}", "/text:state"],
+        capture_output=True, text=True, timeout=5,
+    )
+    state = " ".join(result.stdout.split())
+    if result.returncode or not state:
+        raise RuntimeError(state or result.stderr.strip() or f"{kind} {name!r} not found")
+    status = "ok" if state == "Started" else ("degraded" if state in ("Starting", "Stopping") else "down")
+    return {"status": status, "detail": state.lower()}
+
+
 PROBES = {
     "tcp": probe_tcp,
     "http": probe_http,
     "health": probe_health,
     "systemd": probe_systemd,
     "kvm": probe_kvm,
+    "winservice": probe_winservice,
+    "iis": probe_iis,
 }
 
 
@@ -115,10 +160,19 @@ def _ms_since(start):
 
 # ── Host info ─────────────────────────────────────────────────────────────────
 
+def _uptime_seconds():
+    if IS_WINDOWS:
+        import ctypes
+        tick_count = ctypes.windll.kernel32.GetTickCount64
+        tick_count.restype = ctypes.c_uint64
+        return tick_count() // 1000
+    with open("/proc/uptime") as f:
+        return int(float(f.read().split()[0]))
+
+
 def get_uptime():
     try:
-        with open("/proc/uptime") as f:
-            seconds = int(float(f.read().split()[0]))
+        seconds = _uptime_seconds()
     except OSError:
         return None
     days, rem = divmod(seconds, 86400)
@@ -131,17 +185,36 @@ def get_uptime():
     return f"{minutes}m"
 
 
+def _linux_addresses(iface):
+    out = subprocess.run(
+        ["ip", "-j", "addr", "show", "dev", iface],
+        capture_output=True, text=True, timeout=3, check=True,
+    ).stdout
+    return [a["local"] for link in json.loads(out) for a in link.get("addr_info", [])
+            if a.get("scope") == "global"]
+
+
+def _windows_addresses(iface):
+    """iface is the interface alias, e.g. "Ethernet". Get-NetIPAddress has no scope,
+    so loopback and link-local addresses are dropped to match `ip`'s scope global."""
+    alias = iface.replace("'", "''")
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+         f"Get-NetIPAddress -InterfaceAlias '{alias}' -ErrorAction Stop | ForEach-Object IPAddress"],
+        capture_output=True, text=True, timeout=10,
+    )
+    if result.returncode:
+        raise RuntimeError(f"interface {iface!r} not found")
+    ips = [ipaddress.ip_address(line.split("%")[0]) for line in result.stdout.split()]
+    return [str(ip) for ip in ips if not (ip.is_loopback or ip.is_link_local)]
+
+
 def get_addresses(iface):
     try:
-        out = subprocess.run(
-            ["ip", "-j", "addr", "show", "dev", iface],
-            capture_output=True, text=True, timeout=3, check=True,
-        ).stdout
-        addrs = [a for link in json.loads(out) for a in link.get("addr_info", [])
-                 if a.get("scope") == "global"]
+        addrs = (_windows_addresses if IS_WINDOWS else _linux_addresses)(iface)
         return {
-            "ipv4": [a["local"] for a in addrs if a["family"] == "inet"],
-            "ipv6": [a["local"] for a in addrs if a["family"] == "inet6"],
+            "ipv4": [a for a in addrs if ":" not in a],
+            "ipv6": [a for a in addrs if ":" in a],
         }
     except Exception as e:
         return {"ipv4": [], "ipv6": [], "error": str(e)[:80]}
@@ -178,10 +251,12 @@ class Agent:
             return True
         return bool(self.origin_re and self.origin_re.fullmatch(origin))
 
-    def status(self):
+    def status(self, authorized):
+        """Network addresses are only included for requests carrying the token."""
         groups = self.config.get("groups", [])
         futures = [[self.pool.submit(run_probe, p) for p in g.get("probes", [])] for g in groups]
-        ifaces = {i: self.pool.submit(get_addresses, i) for i in self.config.get("interfaces", [])}
+        interfaces = self.config.get("interfaces", []) if authorized else []
+        ifaces = {i: self.pool.submit(get_addresses, i) for i in interfaces}
         out_groups = [
             {"id": g["id"], "label": g["label"], "services": [f.result() for f in fs]}
             for g, fs in zip(groups, futures)
@@ -195,6 +270,7 @@ class Agent:
             "network": {i: f.result() for i, f in ifaces.items()},
             "groups": out_groups,
             "power_enabled": self.power_token is not None,
+            "authorized": authorized,
         }
 
     def check_token(self, header):
@@ -205,19 +281,21 @@ class Agent:
     def schedule_power(self, action):
         """Returns an error string, or None once the action is scheduled."""
         cmd = POWER_COMMANDS[action]
-        # Confirm the sudoers rule is in place before promising anything.
-        try:
-            allowed = subprocess.run(["sudo", "-n", "-l", *cmd], capture_output=True, timeout=5).returncode == 0
-        except (OSError, subprocess.TimeoutExpired):
-            allowed = False
-        if not allowed:
-            return "sudo rule for power actions is not installed"
+        if not IS_WINDOWS:
+            # Confirm the sudoers rule is in place before promising anything.
+            try:
+                allowed = subprocess.run(["sudo", "-n", "-l", *cmd], capture_output=True, timeout=5).returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                allowed = False
+            if not allowed:
+                return "sudo rule for power actions is not installed"
+            cmd = ["sudo", "-n", *cmd]
         with self.power_lock:
             if self.power_pending:
                 return "a power action is already pending"
             self.power_pending = True
         # Delay so the HTTP response gets out before the machine goes down.
-        threading.Timer(POWER_DELAY_S, subprocess.run, [["sudo", "-n", *cmd]]).start()
+        threading.Timer(POWER_DELAY_S, subprocess.run, [cmd]).start()
         return None
 
 
@@ -245,7 +323,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/ping":
             self._json(200, {"ok": True, "hostname": socket.gethostname()})
         elif path == "/status":
-            self._json(200, self.agent.status())
+            header = self.headers.get("Authorization", "")
+            authorized = self.agent.check_token(header)
+            if header and not authorized:
+                self.log_message("rejected status token from %s", self._client())
+                time.sleep(1)
+            self._json(200, self.agent.status(authorized))
         else:
             self._json(404, {"error": "not found"})
 
@@ -298,7 +381,10 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", default="/etc/status-agent/config.json")
+    parser.add_argument("--log", help="append output to this file (Windows has no journal)")
     args = parser.parse_args()
+    if args.log:
+        sys.stdout = sys.stderr = open(args.log, "a", buffering=1, encoding="utf-8")
 
     with open(args.config) as f:
         config = json.load(f)

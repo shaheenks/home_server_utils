@@ -7,15 +7,45 @@ const state = {
 
 const servers = () => window.CONFIG.SERVERS || [];
 
+// ── Agent tokens ──────────────────────────────────────────────────────────────
+// One token per server, kept per tab (sessionStorage), so closing the tab forgets
+// them. The in-memory copy keeps things working when storage is unavailable.
+
+const tokens = {};
+const tokenKey = id => `agent-token:${id}`;
+
+function getToken(id) {
+  if (!(id in tokens)) {
+    try { tokens[id] = sessionStorage.getItem(tokenKey(id)); } catch { tokens[id] = null; }
+  }
+  return tokens[id];
+}
+
+function setToken(id, token) {
+  tokens[id] = token || null;
+  try {
+    token ? sessionStorage.setItem(tokenKey(id), token) : sessionStorage.removeItem(tokenKey(id));
+  } catch { /* in-memory only */ }
+}
+
 // ── Data fetching ─────────────────────────────────────────────────────────────
 
 async function fetchServerStatus(server) {
   const entry = state.servers[server.id];
+  const token = getToken(server.id);
   try {
-    const resp = await fetch(`${server.agent_url}/status`, { cache: "no-store" });
+    const resp = await fetch(`${server.agent_url}/status`, {
+      cache: "no-store",
+      headers: token ? { "Authorization": `Bearer ${token}` } : {},
+    });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     entry.data = await resp.json();
     entry.status = entry.data.overall || "ok";
+    // Agents without token support omit "authorized"; only an explicit false means rejected.
+    if (token && entry.data.authorized === false) {
+      setToken(server.id, null);
+      entry.tokenInvalid = true;
+    }
   } catch (e) {
     entry.status = "unreachable";
     entry.data = null;
@@ -33,6 +63,56 @@ async function refresh() {
   render();
 }
 
+// ── Token dialog ──────────────────────────────────────────────────────────────
+
+function tokenState(server) {
+  const entry = state.servers[server.id] ?? {};
+  if (entry.tokenInvalid) return { text: "Rejected", cls: "text-red-600" };
+  if (entry.data?.authorized) return { text: "Unlocked", cls: "text-green-700" };
+  if (entry.data && !entry.data.power_enabled) return { text: "No token on server", cls: "text-gray-400" };
+  if (getToken(server.id)) return { text: "Saved", cls: "text-gray-500" };
+  return { text: "Not set", cls: "text-gray-400" };
+}
+
+function openTokenModal(focusId) {
+  document.getElementById("token-fields").innerHTML = servers().map(s => {
+    const { text, cls } = tokenState(s);
+    return `<div>
+      <div class="flex items-center justify-between gap-3">
+        <label for="tok-${s.id}" class="text-xs font-medium text-gray-700">${esc(s.name)}</label>
+        <span class="text-xs ${cls}">${text}</span>
+      </div>
+      <div class="flex gap-2 mt-1.5">
+        <input id="tok-${s.id}" name="${s.id}" type="password" autocomplete="off" spellcheck="false"
+          value="${esc(getToken(s.id) ?? "")}" placeholder="Token"
+          class="min-w-0 flex-1 text-sm font-mono border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-gray-400" />
+        <button type="button" onclick="document.getElementById('tok-${s.id}').value = ''"
+          class="${SMALL_BTN}">Clear</button>
+      </div>
+    </div>`;
+  }).join("");
+  const modal = document.getElementById("token-modal");
+  modal.showModal();
+  document.getElementById(`tok-${focusId ?? servers()[0]?.id}`)?.focus();
+}
+
+function closeTokenModal() {
+  document.getElementById("token-modal").close();
+}
+
+function saveTokens(event) {
+  event.preventDefault();
+  const fields = event.target.elements;
+  for (const s of servers()) {
+    const value = fields[s.id]?.value.trim() || null;
+    if (value === getToken(s.id)) continue;
+    setToken(s.id, value);
+    if (state.servers[s.id]) state.servers[s.id].tokenInvalid = false;
+  }
+  closeTokenModal();
+  refresh();
+}
+
 // ── Power actions ─────────────────────────────────────────────────────────────
 
 async function powerAction(serverId, action) {
@@ -41,10 +121,9 @@ async function powerAction(serverId, action) {
   const warning = action === "shutdown"
     ? "\n\nIt will stay off until it is powered on physically."
     : "";
+  const token = getToken(serverId);
+  if (!token) return openTokenModal(serverId);
   if (!confirm(`${verb} ${server.name}?${warning}`)) return;
-
-  const token = prompt(`Power token for ${server.name}:`);
-  if (!token) return;
 
   try {
     const resp = await fetch(`${server.agent_url}/power`, {
@@ -53,6 +132,10 @@ async function powerAction(serverId, action) {
       body: JSON.stringify({ action }),
     });
     const data = await resp.json().catch(() => ({}));
+    if (resp.status === 401) {
+      setToken(serverId, null);
+      state.servers[serverId].tokenInvalid = true;
+    }
     if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
     alert(`${server.name}: ${action} in ${data.in_seconds}s`);
   } catch (e) {
@@ -133,20 +216,23 @@ function serviceTable(rows, caption, subtitle) {
   </div>`;
 }
 
-function networkCard(network) {
-  const ifaces = Object.entries(network || {});
-  if (!ifaces.length) return "";
-  const body = ifaces.map(([name, { ipv4 = [], ipv6 = [], error }]) => {
-    const rows = [
+const SMALL_BTN = "text-xs border rounded-lg px-2.5 py-1 transition select-none text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-800";
+
+function networkCard(data) {
+  // Only interfaces with addresses are shown, and no card at all without any. Token-aware
+  // agents send no addresses until the server's token is saved (header → Tokens).
+  const ifaces = Object.entries(data.network || {})
+    .map(([name, { ipv4 = [], ipv6 = [] }]) => [name, [
       ...ipv4.map(a => ({ label: "IPv4", addr: a })),
       ...ipv6.map(a => ({ label: "IPv6", addr: a })),
-    ];
-    const content = rows.length
-      ? rows.map(r => `<div class="flex items-center gap-3">
-          <span class="text-xs text-gray-400 w-8 flex-shrink-0">${r.label}</span>
-          <span class="text-sm font-mono text-gray-700 break-all">${esc(r.addr)}</span>
-        </div>`).join("")
-      : `<p class="text-xs text-gray-400">${esc(error || "no addresses")}</p>`;
+    ]])
+    .filter(([, rows]) => rows.length);
+  if (!ifaces.length) return "";
+  const body = ifaces.map(([name, rows]) => {
+    const content = rows.map(r => `<div class="flex items-center gap-3">
+        <span class="text-xs text-gray-400 w-8 flex-shrink-0">${r.label}</span>
+        <span class="text-sm font-mono text-gray-700 break-all">${esc(r.addr)}</span>
+      </div>`).join("");
     return `<div class="space-y-2">
       <p class="text-xs font-medium text-gray-500 font-mono">${esc(name)}</p>${content}
     </div>`;
@@ -169,9 +255,7 @@ function powerButtons(server) {
 
 function serverColumn(server) {
   const { status, data } = state.servers[server.id] ?? { status: "loading" };
-  const meta = data
-    ? [data.server_hostname, data.uptime && `up ${data.uptime}`].filter(Boolean).join(" · ")
-    : new URL(server.agent_url).host;
+  const meta = [new URL(server.agent_url).host, data?.uptime && `up ${data.uptime}`].filter(Boolean).join(" · ");
 
   const header = `<div class="${CARD} px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
     <div class="min-w-0">
@@ -181,7 +265,7 @@ function serverColumn(server) {
       </div>
       <p class="text-xs text-gray-400 font-mono mt-1 truncate">${esc(meta)}</p>
     </div>
-    ${data?.power_enabled ? powerButtons(server) : ""}
+    ${data?.power_enabled && getToken(server.id) && data.authorized !== false ? powerButtons(server) : ""}
   </div>`;
 
   // Unreachable servers show only the header (badge + host), no body.
@@ -189,7 +273,7 @@ function serverColumn(server) {
   if (status === "loading") {
     body = `<div class="${CARD} p-10 text-center text-sm text-gray-400 animate-pulse">Checking services…</div>`;
   } else if (data) {
-    body = [networkCard(data.network), ...data.groups.map(g => serviceTable(g.services, g.label))].join("");
+    body = [networkCard(data), ...data.groups.map(g => serviceTable(g.services, g.label))].join("");
   }
 
   return `<div class="space-y-4">${header}${body}</div>`;
