@@ -61,14 +61,14 @@
     <p>Checks run from your browser &amp; via the status agent on each server</p>
   </footer>
 
-  <!-- Token dialog: one token per server, saved to sessionStorage -->
+  <!-- Token dialog: one token per server, saved to localStorage -->
   <dialog id="token-modal" aria-labelledby="token-modal-title"
     onclick="if (event.target === this) closeTokenModal()"
     class="w-[calc(100%-2rem)] max-w-md p-0 rounded-xl border border-gray-200 shadow-xl backdrop:bg-gray-900/40">
     <form onsubmit="saveTokens(event)">
       <div class="px-5 py-4 border-b border-gray-100">
         <h2 id="token-modal-title" class="text-sm font-semibold text-gray-900">Server tokens</h2>
-        <p class="text-xs text-gray-400 mt-1">Each server has its own token. They're kept in this browser tab only and forgotten when you close it.</p>
+        <p class="text-xs text-gray-400 mt-1">Each server has its own token. They're saved in this browser until you clear them, so only use this on a device you trust.</p>
       </div>
       <div id="token-fields" class="px-5 py-4 space-y-4"></div>
       <div class="px-5 py-3 border-t border-gray-100 bg-gray-50/60 flex justify-end gap-2">

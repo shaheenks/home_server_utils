@@ -156,7 +156,7 @@ This reinstalls the agent and config and restarts the service. The power token i
 - **Off by default:** power actions are disabled until `/etc/status-agent/power_token` exists (`make token`). Delete that file and restart the service to disable them again.
 - **Token handling:** the agent compares the token in constant time and waits 1s after each failed attempt.
 - **Root access:** the agent only gets root through the sudoers rule, which allows exactly `systemctl poweroff` and `systemctl reboot`.
-- **Tokens on the dashboard:** each server has its own token. Click **Tokens** in the header to add, change or clear them. They're saved in sessionStorage, so they last for that browser tab only. A token unlocks that server's Network card and its **Reboot** and **Shut down** buttons, which stay hidden until its token is saved. A rejected token is dropped, and the dialog marks it as rejected.
+- **Tokens on the dashboard:** each server has its own token. Click **Tokens** in the header to add, change or clear them. They're saved in localStorage, so they stay in that browser, across tabs and restarts, until cleared in the dialog. A token unlocks that server's Network card and its **Reboot** and **Shut down** buttons, which stay hidden until its token is saved. A rejected token is dropped, and the dialog marks it as rejected.
 - **Using it:** the dashboard asks for confirmation before acting. After a shutdown, the server stays off until someone powers it on physically.
 
 ### Migrating from the old CGI scripts

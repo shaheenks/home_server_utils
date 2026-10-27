@@ -8,15 +8,15 @@ const state = {
 const servers = () => window.CONFIG.SERVERS || [];
 
 // ── Agent tokens ──────────────────────────────────────────────────────────────
-// One token per server, kept per tab (sessionStorage), so closing the tab forgets
-// them. The in-memory copy keeps things working when storage is unavailable.
+// One token per server, saved in localStorage so they persist across tabs and browser
+// restarts until cleared. The in-memory copy keeps things working when storage is unavailable.
 
 const tokens = {};
 const tokenKey = id => `agent-token:${id}`;
 
 function getToken(id) {
   if (!(id in tokens)) {
-    try { tokens[id] = sessionStorage.getItem(tokenKey(id)); } catch { tokens[id] = null; }
+    try { tokens[id] = localStorage.getItem(tokenKey(id)); } catch { tokens[id] = null; }
   }
   return tokens[id];
 }
@@ -24,7 +24,7 @@ function getToken(id) {
 function setToken(id, token) {
   tokens[id] = token || null;
   try {
-    token ? sessionStorage.setItem(tokenKey(id), token) : sessionStorage.removeItem(tokenKey(id));
+    token ? localStorage.setItem(tokenKey(id), token) : localStorage.removeItem(tokenKey(id));
   } catch { /* in-memory only */ }
 }
 
